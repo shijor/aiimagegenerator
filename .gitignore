@@ -1,0 +1,56 @@
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Model files (large files)
+*.safetensors
+*.ckpt
+*.pth
+*.bin
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# Test files
+test_*.py
+*_test.py
+
+# User data
+models/installed_models.json
+settings.json

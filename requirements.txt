@@ -1,0 +1,16 @@
+PyQt5==5.15.9
+torch==2.6.0+cu118
+torchvision==0.21.0+cu118
+torchaudio==2.6.0
+diffusers==0.32.1
+transformers==4.48.2
+accelerate==1.2.1
+safetensors==0.5.2
+numpy==1.26.3
+Pillow==10.2.0
+requests==2.32.3
+tqdm==4.67.1
+tokenizers==0.21.0
+sentencepiece==0.2.0
+protobuf==5.29.2
+huggingface-hub==0.28.1
