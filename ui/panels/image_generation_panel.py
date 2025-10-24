@@ -141,6 +141,11 @@ class ImageGenerationPanel:
         self.vae_tiling_checkbox.setChecked(True)
         advanced_layout.addRow(self.vae_tiling_checkbox)
 
+        self.cpu_offload_checkbox = QCheckBox("CPU Offload (saves VRAM)")
+        self.cpu_offload_checkbox.setChecked(False)
+        self.cpu_offload_checkbox.setToolTip("Move model components to CPU when not needed - slower but uses less VRAM")
+        advanced_layout.addRow(self.cpu_offload_checkbox)
+
         advanced_group.setLayout(advanced_layout)
         layout.addWidget(advanced_group)
 
@@ -304,12 +309,14 @@ class ImageGenerationPanel:
         # Get optimization parameters for model loading
         quantization = self.quantization_select.currentText()
         use_xformers = self.xformers_checkbox.isChecked()
+        cpu_offload = self.cpu_offload_checkbox.isChecked()
 
         # Create model loader thread
         self.current_model_loader = self.image_service.load_model_async(
             selected_model.path,
             quantization=quantization,
-            use_xformers=use_xformers
+            use_xformers=use_xformers,
+            cpu_offload=cpu_offload
         )
 
         # Connect loader signals

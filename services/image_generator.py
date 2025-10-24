@@ -36,11 +36,12 @@ class ModelLoader(QThread):
     finished = pyqtSignal(object)  # Can be StableDiffusionPipeline or StableDiffusionXLPipeline
     error = pyqtSignal(str)
 
-    def __init__(self, model_path: str, quantization: str = "None", use_xformers: bool = True):
+    def __init__(self, model_path: str, quantization: str = "None", use_xformers: bool = True, cpu_offload: bool = False):
         super().__init__()
         self.model_path = model_path
         self.quantization = quantization
         self.use_xformers = use_xformers
+        self.cpu_offload = cpu_offload
 
     def _is_sdxl_model(self, model_path: str) -> bool:
         """Check if the model is SDXL based on model index, config files, or filename."""
@@ -211,8 +212,19 @@ class ModelLoader(QThread):
                     print(f"⚠️  xFormers initialization failed: {e}")
                     print("   Falling back to standard attention - app will still work normally")
 
-            # Move to GPU if available
-            if torch.cuda.is_available():
+            # Enable CPU offload if requested (saves VRAM but slower)
+            if self.cpu_offload:
+                self.progress.emit("Enabling CPU offload...", 85)
+                try:
+                    model.enable_sequential_cpu_offload()
+                    print("✅ Sequential CPU offload enabled - model components will be moved to CPU when not needed")
+                    print("   This reduces VRAM usage but may slow down generation")
+                except Exception as e:
+                    print(f"⚠️  CPU offload not available: {e}")
+                    print("   Continuing without CPU offload")
+
+            # Move to GPU if available (only if not using CPU offload)
+            if torch.cuda.is_available() and not self.cpu_offload:
                 self.progress.emit("Moving model to GPU...", 90)
                 model.to("cuda")
 
@@ -380,11 +392,22 @@ class ImageGenerator(QThread):
                 self.model.scheduler = scheduler
                 print(f"Using scheduler: {self.params.scheduler}")
 
-            # Enable VAE tiling for large images if requested
-            if self.params.vae_tiling and (self.params.width > 1024 or self.params.height > 1024):
+            # Enable VAE tiling for large images or SDXL models
+            enable_vae_tiling = False
+
+            # Check if user explicitly requested VAE tiling
+            if self.params.vae_tiling:
+                enable_vae_tiling = True
+            # For SDXL models, enable VAE tiling for 1024x1024 and larger images
+            elif isinstance(self.model, StableDiffusionXLPipeline):
+                if self.params.width >= 1024 or self.params.height >= 1024:
+                    enable_vae_tiling = True
+                    print(f"SDXL detected - enabling VAE tiling for {self.params.width}x{self.params.height} image")
+
+            if enable_vae_tiling:
                 try:
                     self.model.enable_vae_tiling()
-                    print(f"VAE tiling enabled for large image: {self.params.width}x{self.params.height}")
+                    print(f"VAE tiling enabled for {'SDXL' if isinstance(self.model, StableDiffusionXLPipeline) else 'SD'} image: {self.params.width}x{self.params.height}")
                 except Exception as e:
                     print(f"VAE tiling not available: {e}")
 
@@ -474,9 +497,9 @@ class ImageGenerationService:
             print(f"Failed to download model: {e}")
             raise
 
-    def load_model_async(self, model_path: str, quantization: str = "None", use_xformers: bool = True) -> ModelLoader:
+    def load_model_async(self, model_path: str, quantization: str = "None", use_xformers: bool = True, cpu_offload: bool = False) -> ModelLoader:
         """Load a model asynchronously with progress reporting."""
-        return ModelLoader(model_path, quantization, use_xformers)
+        return ModelLoader(model_path, quantization, use_xformers, cpu_offload)
 
     def _is_sdxl_model(self, model_path: str) -> bool:
         """Check if the model is SDXL based on model index, config files, or filename."""

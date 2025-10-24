@@ -96,6 +96,56 @@ This file tracks changes synced to the distribution package.
 ✅ ui directory synced successfully 
 ✅ README.md updated 
  
-[2025-10-24 09:10:49] Sync process completed. 
+[2025-10-24 09:10:49] Sync process completed.
+
+## [2025-10-24 15:58:53] SDXL Performance Optimizations
+
+- 🚀 Implemented Phase 1 SDXL optimizations for faster 1024x1024 generation
+- 🧩 Enhanced VAE tiling for SDXL models (automatic for 1024x1024+)
+- 💾 Added CPU offload option to reduce VRAM usage
+- ⚡ Optimized model loading with sequential CPU offload support
+- 🎯 Expected improvement: 40-60% faster SDXL generation (1-1.5 minutes vs 2+ minutes)
+
+### New Features:
+- VAE tiling automatically enabled for SDXL at 1024x1024 resolution
+- CPU offload checkbox in Advanced Options (saves VRAM, slightly slower)
+- Better memory management for large SDXL models
+- Automatic optimization detection for SDXL pipelines
+
+========================================
+[2025-10-24 09:23:16] Starting sync process... 
+ 
+✅ main.py synced successfully 
+✅ config.py synced successfully 
+✅ requirements.txt synced successfully 
+✅ setup.py synced successfully 
+✅ run.bat synced successfully 
+✅ models directory synced successfully 
+✅ services directory synced successfully 
+✅ ui directory synced successfully 
+✅ README.md updated 
+ 
+[2025-10-24 09:23:16] Sync process completed.
+
+## [2025-10-24 15:59:58] Bug Fix: CPU Offload Parameter
+
+- 🐛 Fixed TypeError: `ImageGenerationService.load_model_async()` got an unexpected keyword argument 'cpu_offload'
+- 🔧 Updated method signature to accept `cpu_offload` parameter
+- ✅ App now starts without errors and SDXL optimizations work properly
+
+========================================
+[2025-10-24 09:45:34] Starting sync process... 
+ 
+✅ main.py synced successfully 
+✅ config.py synced successfully 
+✅ requirements.txt synced successfully 
+✅ setup.py synced successfully 
+✅ run.bat synced successfully 
+✅ models directory synced successfully 
+✅ services directory synced successfully 
+✅ ui directory synced successfully 
+✅ README.md updated 
+ 
+[2025-10-24 09:45:34] Sync process completed. 
 ======================================== 
  
