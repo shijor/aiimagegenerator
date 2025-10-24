@@ -266,7 +266,22 @@ class ModelManager:
                 installed_date=datetime.now().isoformat()
             )
 
+            # Set default aspect ratios based on model type
+            model_info.set_default_aspect_ratios()
+
+            # Set default generation parameters based on model type
+            if model_type == ModelType.STABLE_DIFFUSION_XL:
+                # SDXL models often work better with different defaults
+                model_info.default_steps = 25  # SDXL typically needs more steps
+                model_info.default_cfg = 7.0   # Slightly lower CFG for SDXL
+            else:
+                # SD 1.4/1.5 defaults
+                model_info.default_steps = 20
+                model_info.default_cfg = 7.5
+
             print(f"MODEL_MANAGER: Created ModelInfo: {model_info.name}, {model_info.model_type}, {len(model_info.categories)} categories")
+            print(f"MODEL_MANAGER: Default aspect ratios: 1:1={model_info.aspect_ratio_1_1}, 9:16={model_info.aspect_ratio_9_16}, 16:9={model_info.aspect_ratio_16_9}")
+            print(f"MODEL_MANAGER: Default generation params: steps={model_info.default_steps}, cfg={model_info.default_cfg}")
 
             # Step 7: Save to database (100%)
             print("MODEL_MANAGER: Step 7 - Saving to database")
@@ -327,7 +342,7 @@ class ModelManager:
         return self.db.set_default_model(model_name)
 
     def delete_model(self, model_name: str) -> bool:
-        """Delete an installed model."""
+        """Delete an installed model from database only (preserves the actual model file)."""
         # Get model info first
         models = self.db.get_all_models()
         model_to_delete = None
@@ -339,14 +354,11 @@ class ModelManager:
         if not model_to_delete or model_to_delete.is_default:
             return False
 
-        # Remove file
-        try:
-            if os.path.exists(model_to_delete.path):
-                os.remove(model_to_delete.path)
-        except OSError:
-            pass  # File might not exist
+        # NOTE: We intentionally do NOT delete the actual model file
+        # This allows users to keep their model files while removing them from the app's database
+        # The model file remains on disk and can be re-scanned/installed later if needed
 
-        # Remove from database
+        # Remove from database only
         return self.db.delete_model(model_name)
 
     def get_model_names(self) -> List[str]:

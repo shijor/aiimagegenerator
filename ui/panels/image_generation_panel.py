@@ -66,6 +66,9 @@ class ImageGenerationPanel:
         model_layout = QHBoxLayout()
         self.model_select = QComboBox()
         self._refresh_model_dropdown()
+        self.model_select.currentTextChanged.connect(self._on_model_changed)
+        # Connect to model selection changes to update defaults
+        self.model_select.currentTextChanged.connect(self._update_generation_defaults)
         model_layout.addWidget(self.model_select)
 
         # Refresh button
@@ -189,26 +192,50 @@ class ImageGenerationPanel:
         return widget
 
     def _refresh_model_dropdown(self):
-        """Refresh the model dropdown with current installed models."""
+        """Refresh the model dropdown with current installed models using display names."""
         current_selection = self.model_select.currentText()
         self.model_select.clear()
 
         # Get all installed models - they should all be valid for image generation
         # since they were validated during installation
         installed_models = self.model_manager.get_installed_models()
-        model_names = [model.name for model in installed_models]
 
-        self.model_select.addItems(model_names)
+        # Create mapping between display names and model objects
+        self.model_display_mapping = {}
+        display_names = []
 
-        # Try to restore previous selection
-        if current_selection in model_names:
-            self.model_select.setCurrentText(current_selection)
-        else:
-            # Default to the first model or "Stable Diffusion v1.4" if available
-            default_model = "Stable Diffusion v1.4"
-            if default_model in model_names:
-                self.model_select.setCurrentText(default_model)
-            elif model_names:
+        for model in installed_models:
+            # Use display name if available, otherwise fall back to model name
+            display_name = model.display_name or model.name
+            display_names.append(display_name)
+            self.model_display_mapping[display_name] = model
+
+        self.model_select.addItems(display_names)
+
+        # Try to restore previous selection by finding the corresponding display name
+        if current_selection:
+            # Check if current_selection is already a display name
+            if current_selection in self.model_display_mapping:
+                self.model_select.setCurrentText(current_selection)
+            else:
+                # Try to find the model that was previously selected and get its display name
+                for model in installed_models:
+                    if model.name == current_selection:
+                        display_name = model.display_name or model.name
+                        self.model_select.setCurrentText(display_name)
+                        break
+
+        # If no selection, default to the first model or "Stable Diffusion v1.4" if available
+        if self.model_select.currentText() == "":
+            default_model_name = "Stable Diffusion v1.4"
+            for model in installed_models:
+                if model.name == default_model_name:
+                    display_name = model.display_name or model.name
+                    self.model_select.setCurrentText(display_name)
+                    break
+
+            # If default not found, select the first available model
+            if self.model_select.currentText() == "" and display_names:
                 self.model_select.setCurrentIndex(0)
 
     def _create_main_area(self) -> QWidget:
@@ -265,18 +292,13 @@ class ImageGenerationPanel:
         # Store prompt for later use
         self.pending_prompt = prompt
 
-        # Get selected model
-        selected_model_name = self.model_select.currentText()
-        if not selected_model_name:
+        # Get selected model using display name mapping
+        selected_display_name = self.model_select.currentText()
+        if not selected_display_name:
             return
 
-        # Get the model info for the selected model
-        selected_model = None
-        for model in self.model_manager.get_installed_models():
-            if model.name == selected_model_name:
-                selected_model = model
-                break
-
+        # Get the model object from the display name mapping
+        selected_model = self.model_display_mapping.get(selected_display_name)
         if not selected_model:
             self.on_generation_error("Selected model not found!")
             return
@@ -545,25 +567,79 @@ class ImageGenerationPanel:
         # Set the scaled pixmap
         self.image_label.setPixmap(scaled_pixmap)
 
+    def _parse_aspect_ratio(self, aspect_ratio_str: str) -> tuple[int, int]:
+        """Parse aspect ratio string like '512x512' into width, height tuple."""
+        if not aspect_ratio_str or 'x' not in aspect_ratio_str:
+            return 512, 512  # Default fallback
+
+        try:
+            width_str, height_str = aspect_ratio_str.split('x', 1)
+            width = int(width_str.strip())
+            height = int(height_str.strip())
+            return width, height
+        except (ValueError, AttributeError):
+            return 512, 512  # Default fallback
+
     def _on_aspect_ratio_changed(self, aspect_ratio: str):
         """Handle aspect ratio selection change."""
+        # Get the currently selected model
+        selected_display_name = self.model_select.currentText()
+        if not selected_display_name or selected_display_name not in self.model_display_mapping:
+            # Fallback to default values if no model selected
+            if aspect_ratio == "1:1":
+                self.width_input.setValue(512)
+                self.height_input.setValue(512)
+            elif aspect_ratio == "9:16":
+                self.width_input.setValue(384)
+                self.height_input.setValue(640)
+            elif aspect_ratio == "16:9":
+                self.width_input.setValue(640)
+                self.height_input.setValue(384)
+            elif aspect_ratio == "Custom":
+                pass  # Don't change current values
+            return
+
+        selected_model = self.model_display_mapping[selected_display_name]
+
         if aspect_ratio == "1:1":
-            # Square aspect ratio
-            self.width_input.setValue(512)
-            self.height_input.setValue(512)
+            # Use model's 1:1 aspect ratio setting
+            width, height = self._parse_aspect_ratio(selected_model.aspect_ratio_1_1)
+            self.width_input.setValue(width)
+            self.height_input.setValue(height)
         elif aspect_ratio == "9:16":
-            # Portrait aspect ratio (9:16 means width:height = 9:16)
-            self.width_input.setValue(384)  # 512 * (9/16) ≈ 288, but let's use 384 for better compatibility
-            self.height_input.setValue(640)  # 512 * (16/9) ≈ 910, but let's use 640
+            # Use model's 9:16 aspect ratio setting (portrait)
+            width, height = self._parse_aspect_ratio(selected_model.aspect_ratio_9_16)
+            self.width_input.setValue(width)
+            self.height_input.setValue(height)
         elif aspect_ratio == "16:9":
-            # Landscape aspect ratio (16:9 means width:height = 16:9)
-            self.width_input.setValue(640)  # 512 * (16/9) ≈ 910, but let's use 640
-            self.height_input.setValue(384)  # 512 * (9/16) ≈ 288, but let's use 384
+            # Use model's 16:9 aspect ratio setting (landscape)
+            width, height = self._parse_aspect_ratio(selected_model.aspect_ratio_16_9)
+            self.width_input.setValue(width)
+            self.height_input.setValue(height)
         elif aspect_ratio == "Custom":
             # Don't change current values for custom
             pass
 
+    def _on_model_changed(self, display_name: str):
+        """Handle model selection change."""
+        if not display_name or display_name not in self.model_display_mapping:
+            return
 
+        # Apply the current aspect ratio setting to the new model
+        current_aspect_ratio = self.aspect_ratio_select.currentText()
+        if current_aspect_ratio and current_aspect_ratio != "Custom":
+            self._on_aspect_ratio_changed(current_aspect_ratio)
+
+    def _update_generation_defaults(self, display_name: str):
+        """Update generation parameters to model's defaults when model is selected."""
+        if not display_name or display_name not in self.model_display_mapping:
+            return
+
+        selected_model = self.model_display_mapping[display_name]
+
+        # Update steps and guidance scale to model's defaults
+        self.steps_input.setValue(int(selected_model.default_steps))
+        self.guidance_input.setValue(float(selected_model.default_cfg))
 
     def _validate_model_file(self, model) -> bool:
         """Validate that the model file exists and is accessible."""

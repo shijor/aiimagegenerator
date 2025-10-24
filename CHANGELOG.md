@@ -133,6 +133,54 @@ This file tracks changes synced to the distribution package.
 - 🔧 Updated method signature to accept `cpu_offload` parameter
 - ✅ App now starts without errors and SDXL optimizations work properly
 
+## [2025-10-24 16:00:13] Distribution Sync Optimization
+
+- 📦 Removed models directory from distribution sync
+- ⚡ Distribution package now excludes models/ directory (large files, databases)
+- 🗂️ Sync now only includes: services/, ui/, and core files
+- 💾 Smaller distribution package size for sharing
+
+## [2025-10-24 15:59:40] Bug Fix: Model Management Method Names
+
+- 🐛 Fixed AttributeError: `'ModelManager' object has no attribute '_save_state_for_undo'`
+- 🔧 Corrected method calls to use `_save_operation_for_undo` instead of `_save_state_for_undo`
+- ✅ Model deletion and default setting operations now work properly
+
+## [2025-10-24 15:59:09] UI Enhancement: Model Dropdown Display Names
+
+- 🎨 **Model dropdown now shows display names** instead of technical model names
+- 🏷️ Uses `model.display_name` when available, falls back to `model.name`
+- 🔗 **Smart mapping system** maintains correct model selection functionality
+- 👤 **Better user experience** with user-friendly model names in the interface
+- ✅ **Backward compatibility** preserved for existing model selection logic
+
+## [2025-10-24 15:58:45] Safety Enhancement: Model Deletion Behavior
+
+- 🛡️ **Model deletion now preserves actual model files**
+- 📁 **Only removes database entries**, keeps model files on disk
+- 🔄 **Models can be re-scanned/installed** after deletion if needed
+- 💾 **Prevents accidental loss** of expensive model files
+- 📋 **Updated method documentation** to clarify the new behavior
+
+## [2025-10-24 15:58:29] UI Enhancement: Model Edit Dialog
+
+- 🎨 **Fixed overlapping text** in Edit Model Parameters dialog
+- 📐 **Added proper margins and spacing** (20px margins, 10px spacing)
+- 🏷️ **Added clear title section** with model name and separator
+- ❌ **Fixed Cancel button behavior** - now only closes without saving
+- 🎯 **Improved dialog layout** with better visual hierarchy
+- 📏 **Better button handling** with proper focus and default settings
+- 🐛 **Fixed dialog result detection** - properly distinguishes Save vs Cancel
+
+## [2025-10-24 15:58:35] UI Enhancement: Copy Model URL Button
+
+- 🔗 **Added link/copy URL button** (🔗) next to edit/delete buttons in model list
+- 📋 **One-click URL copying** to system clipboard when available
+- ℹ️ **Smart messaging** - shows "Copied the URL to clipboard!" or "The source URL for the model is not available."
+- 🎯 **Tooltip guidance** - "Copy Source URL" tooltip for clarity
+- 📱 **Seamless integration** - positioned first in button row for easy access
+- 🛡️ **Error handling** - graceful handling of missing models or clipboard errors
+
 ========================================
 [2025-10-24 09:45:34] Starting sync process... 
  
@@ -147,5 +195,45 @@ This file tracks changes synced to the distribution package.
 ✅ README.md updated 
  
 [2025-10-24 09:45:34] Sync process completed. 
+========================================
+[2025-10-24 09:48:39] Starting sync process... 
+ 
+✅ main.py synced successfully 
+✅ config.py synced successfully 
+✅ requirements.txt synced successfully 
+✅ setup.py synced successfully 
+✅ run.bat synced successfully 
+✅ services directory synced successfully 
+✅ ui directory synced successfully 
+✅ README.md updated 
+ 
+[2025-10-24 09:48:39] Sync process completed. 
+======================================== 
+ 
+[2025-10-24 09:49:39] Starting sync process... 
+ 
+✅ main.py synced successfully 
+✅ config.py synced successfully 
+✅ requirements.txt synced successfully 
+✅ setup.py synced successfully 
+✅ run.bat synced successfully 
+✅ services directory synced successfully 
+✅ ui directory synced successfully 
+✅ README.md updated 
+ 
+[2025-10-24 09:49:39] Sync process completed. 
+========================================
+[2025-10-24 11:16:23] Starting sync process... 
+ 
+✅ main.py synced successfully 
+✅ config.py synced successfully 
+✅ requirements.txt synced successfully 
+✅ setup.py synced successfully 
+✅ run.bat synced successfully 
+✅ services directory synced successfully 
+✅ ui directory synced successfully 
+✅ README.md updated 
+ 
+[2025-10-24 11:16:23] Sync process completed. 
 ======================================== 
  

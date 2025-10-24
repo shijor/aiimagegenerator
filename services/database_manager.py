@@ -97,6 +97,35 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE models ADD COLUMN display_name TEXT")
             print("DATABASE MIGRATION: display_name column added successfully!")
 
+        # Add aspect ratio columns if they don't exist
+        aspect_ratio_columns = [
+            ("aspect_ratio_1_1", "TEXT"),
+            ("aspect_ratio_9_16", "TEXT"),
+            ("aspect_ratio_16_9", "TEXT")
+        ]
+
+        for column_name, column_type in aspect_ratio_columns:
+            try:
+                cursor.execute(f"SELECT {column_name} FROM models LIMIT 1")
+            except sqlite3.OperationalError:
+                print(f"DATABASE MIGRATION: Adding {column_name} column to models table...")
+                cursor.execute(f"ALTER TABLE models ADD COLUMN {column_name} {column_type}")
+                print(f"DATABASE MIGRATION: {column_name} column added successfully!")
+
+        # Add default generation parameter columns if they don't exist
+        generation_param_columns = [
+            ("default_steps", "INTEGER DEFAULT 20"),
+            ("default_cfg", "REAL DEFAULT 7.5")
+        ]
+
+        for column_name, column_type in generation_param_columns:
+            try:
+                cursor.execute(f"SELECT {column_name} FROM models LIMIT 1")
+            except sqlite3.OperationalError:
+                print(f"DATABASE MIGRATION: Adding {column_name} column to models table...")
+                cursor.execute(f"ALTER TABLE models ADD COLUMN {column_name} {column_type}")
+                print(f"DATABASE MIGRATION: {column_name} column added successfully!")
+
     def migrate_from_json(self) -> bool:
         """Migrate data from JSON files to SQLite database."""
         try:
@@ -160,15 +189,17 @@ class DatabaseManager:
                     INSERT OR REPLACE INTO models
                     (name, path, display_name, model_type, description, categories, usage_notes,
                      source_url, license_info, is_default, size_mb, installed_date,
-                     last_used, usage_count, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     last_used, usage_count, aspect_ratio_1_1, aspect_ratio_9_16, aspect_ratio_16_9,
+                     default_steps, default_cfg, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     model.name, model.path, model.display_name,
                     model.model_type.value if model.model_type else None,
                     model.description, categories_json, model.usage_notes,
                     model.source_url, model.license_info, model.is_default,
                     model.size_mb, model.installed_date, model.last_used,
-                    model.usage_count, datetime.now().isoformat()
+                    model.usage_count, model.aspect_ratio_1_1, model.aspect_ratio_9_16, model.aspect_ratio_16_9,
+                    model.default_steps, model.default_cfg, datetime.now().isoformat()
                 ))
 
                 conn.commit()
@@ -194,7 +225,8 @@ class DatabaseManager:
                             path = ?, display_name = ?, model_type = ?, description = ?,
                             categories = ?, usage_notes = ?, source_url = ?, license_info = ?,
                             is_default = ?, size_mb = ?, installed_date = ?, last_used = ?,
-                            usage_count = ?, updated_at = ?
+                            usage_count = ?, aspect_ratio_1_1 = ?, aspect_ratio_9_16 = ?, aspect_ratio_16_9 = ?,
+                            default_steps = ?, default_cfg = ?, updated_at = ?
                         WHERE name = ?
                     ''', (
                         model.path, model.display_name,
@@ -202,7 +234,8 @@ class DatabaseManager:
                         model.description, categories_json, model.usage_notes,
                         model.source_url, model.license_info, model.is_default,
                         model.size_mb, model.installed_date, model.last_used,
-                        model.usage_count, datetime.now().isoformat(),
+                        model.usage_count, model.aspect_ratio_1_1, model.aspect_ratio_9_16, model.aspect_ratio_16_9,
+                        model.default_steps, model.default_cfg, datetime.now().isoformat(),
                         old_name
                     ))
                 else:
@@ -212,15 +245,17 @@ class DatabaseManager:
                         INSERT INTO models
                         (name, path, display_name, model_type, description, categories, usage_notes,
                          source_url, license_info, is_default, size_mb, installed_date,
-                         last_used, usage_count, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         last_used, usage_count, aspect_ratio_1_1, aspect_ratio_9_16, aspect_ratio_16_9,
+                         default_steps, default_cfg, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         model.name, model.path, model.display_name,
                         model.model_type.value if model.model_type else None,
                         model.description, categories_json, model.usage_notes,
                         model.source_url, model.license_info, model.is_default,
                         model.size_mb, model.installed_date, model.last_used,
-                        model.usage_count, datetime.now().isoformat()
+                        model.usage_count, model.aspect_ratio_1_1, model.aspect_ratio_9_16, model.aspect_ratio_16_9,
+                        model.default_steps, model.default_cfg, datetime.now().isoformat()
                     ))
 
                     # Then delete the old model
@@ -266,7 +301,12 @@ class DatabaseManager:
                         source_url=row[7], license_info=row[8],
                         is_default=bool(row[9]), size_mb=row[10],
                         installed_date=row[11], last_used=row[12],
-                        usage_count=row[13] or 0
+                        usage_count=row[13] or 0,
+                        aspect_ratio_1_1=row[17] or "",
+                        aspect_ratio_9_16=row[18] or "",
+                        aspect_ratio_16_9=row[19] or "",
+                        default_steps=row[20] or 20,
+                        default_cfg=row[21] or 7.5
                     )
                     models.append(model)
 
@@ -320,7 +360,12 @@ class DatabaseManager:
                         source_url=row[7], license_info=row[8],
                         is_default=bool(row[9]), size_mb=row[10],
                         installed_date=row[11], last_used=row[12],
-                        usage_count=row[13] or 0
+                        usage_count=row[13] or 0,
+                        aspect_ratio_1_1=row[17] or "",
+                        aspect_ratio_9_16=row[18] or "",
+                        aspect_ratio_16_9=row[19] or "",
+                        default_steps=row[20] or 20,
+                        default_cfg=row[21] or 7.5
                     )
         except Exception as e:
             print(f"Failed to get default model: {e}")
