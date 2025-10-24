@@ -28,18 +28,14 @@ class MainWindow(QMainWindow):
         # Start maximized
         self.showMaximized()
 
-        # Initialize services
+        # Initialize services (without loading model)
         self.settings_manager = SettingsManager()
         self.model_manager = ModelManager()
         self.image_service = ImageGenerationService()
         self.memory_manager = MemoryManager(self.image_service)
 
-        # Load initial model
-        default_model = self.model_manager.get_default_model()
-        if default_model:
-            self.image_service.load_model(default_model.path)
-        else:
-            self.image_service.load_model()
+        # Don't load model on startup - use lazy loading instead
+        # Model will be loaded when first generation is requested
 
         # Start memory monitoring
         self.memory_manager.start_monitoring()

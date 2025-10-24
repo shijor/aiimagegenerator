@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from services.model_manager import ModelManager
 from services.image_generator import ImageGenerationService, ImageGenerator, ModelLoader
 from models.generation_params import GenerationParams
+from ui.dialogs.model_loading_dialog import ModelLoadingDialog
 
 
 class ImageGenerationPanel:
@@ -251,16 +252,13 @@ class ImageGenerationPanel:
         return widget
 
     def generate_image(self):
-        """Generate image with current parameters."""
+        """Generate image with current parameters using lazy loading."""
         prompt = self.prompt_input.toPlainText().strip()
         if not prompt:
             return
 
         # Store prompt for later use
         self.pending_prompt = prompt
-
-        # Reset inactivity timer since user is active
-        # This will be handled by the memory manager's event filter
 
         # Get selected model
         selected_model_name = self.model_select.currentText()
@@ -282,35 +280,89 @@ class ImageGenerationPanel:
         if not self._validate_model_file(selected_model):
             return
 
-        # Check if we need to switch models
+        # Check if a model is already loaded
         current_model_path = self.image_service._current_model_path
-        if current_model_path != selected_model.path:
-            # Unload current model to free memory
-            if self.image_service._current_model_path:
-                self.image_service.unload_model()
+        if current_model_path == selected_model.path and self.image_service.model is not None:
+            # Model is already loaded, proceed with generation
+            self._start_image_generation()
+        else:
+            # Need to load model first (lazy loading)
+            self._load_model_for_generation(selected_model)
 
-            # Switch to the selected model with progress updates
-            self.generate_btn.setEnabled(False)
-            self.save_btn.setEnabled(False)
-            self.progress_bar.setVisible(True)
-            self.progress_bar.setRange(0, 100)
+    def _load_model_for_generation(self, selected_model):
+        """Load model with loading dialog for lazy loading."""
+        # Unload current model if different
+        if self.image_service._current_model_path and self.image_service._current_model_path != selected_model.path:
+            self.image_service.unload_model()
 
-            # Get optimization parameters for model loading
-            quantization = self.quantization_select.currentText()
-            use_xformers = self.xformers_checkbox.isChecked()
+        # Create and show loading dialog
+        self.loading_dialog = ModelLoadingDialog(selected_model.display_name or selected_model.name, self.generate_btn.parentWidget().window())
 
-            # Create model loader thread
-            self.current_model_loader = self.image_service.load_model_async(
-                selected_model.path,
-                quantization=quantization,
-                use_xformers=use_xformers
-            )
-            self.current_model_loader.progress.connect(self.on_model_loading_progress)
-            self.current_model_loader.finished.connect(lambda model: self.on_model_loaded(model, selected_model.path))
-            self.current_model_loader.error.connect(self.on_model_loading_error)
-            self.current_model_loader.start()
-            return  # Wait for model loading to complete
+        # Connect dialog signals
+        self.loading_dialog.cancelled.connect(self._on_model_loading_cancelled)
 
+        # Get optimization parameters for model loading
+        quantization = self.quantization_select.currentText()
+        use_xformers = self.xformers_checkbox.isChecked()
+
+        # Create model loader thread
+        self.current_model_loader = self.image_service.load_model_async(
+            selected_model.path,
+            quantization=quantization,
+            use_xformers=use_xformers
+        )
+
+        # Connect loader signals
+        self.current_model_loader.progress.connect(self.loading_dialog.update_progress)
+        self.current_model_loader.finished.connect(lambda model: self._on_model_loaded_for_generation(model, selected_model.path))
+        self.current_model_loader.error.connect(self._on_model_loading_error_for_generation)
+
+        # Show dialog and start loading
+        self.loading_dialog.show()
+        self.current_model_loader.start()
+
+    def _on_model_loaded_for_generation(self, model, model_path: str):
+        """Handle successful model loading for generation."""
+        # Close loading dialog
+        if hasattr(self, 'loading_dialog') and self.loading_dialog:
+            self.loading_dialog.accept()
+            self.loading_dialog = None
+
+        # Set the loaded model
+        self.image_service.model = model
+        self.image_service._current_model_path = model_path
+
+        # Now start image generation
+        self._start_image_generation()
+
+    def _on_model_loading_error_for_generation(self, error_msg: str):
+        """Handle model loading error during generation."""
+        # Close loading dialog
+        if hasattr(self, 'loading_dialog') and self.loading_dialog:
+            self.loading_dialog.reject()
+            self.loading_dialog = None
+
+        # Show error
+        self.on_generation_error(f"Failed to load model: {error_msg}")
+
+    def _on_model_loading_cancelled(self):
+        """Handle model loading cancellation."""
+        # Stop the model loader thread
+        if hasattr(self, 'current_model_loader') and self.current_model_loader and self.current_model_loader.isRunning():
+            # Note: ModelLoader doesn't have a built-in cancel mechanism
+            # We'll just close the dialog and show cancellation message
+            pass
+
+        # Close dialog
+        if hasattr(self, 'loading_dialog') and self.loading_dialog:
+            self.loading_dialog.reject()
+            self.loading_dialog = None
+
+        # Show cancellation message
+        self.image_label.setText("Model loading cancelled")
+
+    def _start_image_generation(self):
+        """Start image generation with loaded model."""
         # Get parameters
         steps = self.steps_input.value()
         guidance = self.guidance_input.value()
