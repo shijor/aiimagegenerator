@@ -12,7 +12,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.model_info import ModelInfo, ModelCategory, ModelType
+from models.model_info import ModelInfo, ModelCategory, ModelType, LoRAInfo
 
 
 class DatabaseManager:
@@ -79,10 +79,34 @@ class DatabaseManager:
                 )
             ''')
 
+            # Create loras table for LoRA adapters
+            cursor.execute('''CREATE TABLE IF NOT EXISTS loras (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                path TEXT NOT NULL,
+                display_name TEXT,
+                base_model_type TEXT, -- Compatible base model type
+                description TEXT,
+                trigger_words TEXT, -- JSON array of trigger words
+                categories TEXT, -- JSON array of categories
+                usage_notes TEXT,
+                source_url TEXT,
+                license_info TEXT,
+                size_mb REAL,
+                installed_date TEXT,
+                last_used TEXT,
+                usage_count INTEGER DEFAULT 0,
+                default_scaling REAL DEFAULT 1.0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )''')
+
             # Create indexes for better performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_models_name ON models(name)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_models_type ON models(model_type)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_models_default ON models(is_default)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_loras_name ON loras(name)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_loras_base_type ON loras(base_model_type)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key)')
 
             conn.commit()
@@ -572,11 +596,12 @@ class DatabaseManager:
 
                 # Clear all tables
                 cursor.execute("DELETE FROM models")
+                cursor.execute("DELETE FROM loras")
                 cursor.execute("DELETE FROM settings")
                 cursor.execute("DELETE FROM operations_history")
 
                 # Reset auto-increment counters
-                cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('models', 'settings', 'operations_history')")
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('models', 'loras', 'settings', 'operations_history')")
 
                 conn.commit()
                 return True
@@ -584,6 +609,200 @@ class DatabaseManager:
         except Exception as e:
             print(f"Failed to clear database: {e}")
             return False
+
+    # LoRA operations
+    def save_lora(self, lora: LoRAInfo) -> bool:
+        """Save or update a LoRA adapter in the database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Convert trigger words and categories to JSON strings
+                trigger_words_json = json.dumps(lora.trigger_words) if lora.trigger_words else "[]"
+                categories_json = json.dumps([str(cat) for cat in lora.categories]) if lora.categories else "[]"
+
+                cursor.execute('''INSERT OR REPLACE INTO loras
+                    (name, path, display_name, base_model_type, description, trigger_words,
+                     categories, usage_notes, source_url, license_info, size_mb,
+                     installed_date, last_used, usage_count, default_scaling, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
+                    lora.name, lora.path, lora.display_name,
+                    lora.base_model_type.value if lora.base_model_type else None,
+                    lora.description, trigger_words_json, categories_json,
+                    lora.usage_notes, lora.source_url, lora.license_info,
+                    lora.size_mb, lora.installed_date, lora.last_used,
+                    lora.usage_count, lora.default_scaling, datetime.now().isoformat()
+                ))
+
+                conn.commit()
+                return True
+
+        except Exception as e:
+            print(f"Failed to save LoRA: {e}")
+            return False
+
+    def update_lora(self, old_name: str, lora: LoRAInfo) -> bool:
+        """Update an existing LoRA adapter, handling name changes safely."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Convert trigger words and categories to JSON strings
+                trigger_words_json = json.dumps(lora.trigger_words) if lora.trigger_words else "[]"
+                categories_json = json.dumps([str(cat) for cat in lora.categories]) if lora.categories else "[]"
+
+                if lora.name == old_name:
+                    # Name hasn't changed, use UPDATE
+                    cursor.execute('''UPDATE loras SET
+                        path = ?, display_name = ?, base_model_type = ?, description = ?,
+                        trigger_words = ?, categories = ?, usage_notes = ?, source_url = ?,
+                        license_info = ?, size_mb = ?, installed_date = ?, last_used = ?,
+                        usage_count = ?, default_scaling = ?, updated_at = ?
+                        WHERE name = ?''', (
+                        lora.path, lora.display_name,
+                        lora.base_model_type.value if lora.base_model_type else None,
+                        lora.description, trigger_words_json, categories_json,
+                        lora.usage_notes, lora.source_url, lora.license_info,
+                        lora.size_mb, lora.installed_date, lora.last_used,
+                        lora.usage_count, lora.default_scaling, datetime.now().isoformat(),
+                        old_name
+                    ))
+                else:
+                    # Name changed, insert new row then delete old
+                    cursor.execute('''INSERT INTO loras
+                        (name, path, display_name, base_model_type, description, trigger_words,
+                         categories, usage_notes, source_url, license_info, size_mb,
+                         installed_date, last_used, usage_count, default_scaling, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
+                        lora.name, lora.path, lora.display_name,
+                        lora.base_model_type.value if lora.base_model_type else None,
+                        lora.description, trigger_words_json, categories_json,
+                        lora.usage_notes, lora.source_url, lora.license_info,
+                        lora.size_mb, lora.installed_date, lora.last_used,
+                        lora.usage_count, lora.default_scaling, datetime.now().isoformat()
+                    ))
+
+                    # Then delete the old LoRA
+                    cursor.execute('DELETE FROM loras WHERE name = ?', (old_name,))
+
+                conn.commit()
+                return True
+
+        except Exception as e:
+            print(f"Failed to update LoRA: {e}")
+            return False
+
+    def get_all_loras(self) -> List[LoRAInfo]:
+        """Get all LoRA adapters from the database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM loras ORDER BY name')
+
+                loras = []
+                for row in cursor.fetchall():
+                    # Parse trigger words and categories from JSON
+                    trigger_words = json.loads(row[6] or "[]")
+                    categories_data = json.loads(row[7] or "[]")
+                    categories = []
+                    for cat in categories_data:
+                        try:
+                            categories.append(ModelCategory(cat))
+                        except ValueError:
+                            pass
+
+                    # Handle optional base_model_type
+                    base_model_type = None
+                    if row[4]:  # base_model_type column
+                        try:
+                            base_model_type = ModelType(row[4])
+                        except ValueError:
+                            base_model_type = None
+
+                    lora = LoRAInfo(
+                        name=row[1], path=row[2], display_name=row[3] or "",
+                        base_model_type=base_model_type, description=row[5] or "",
+                        trigger_words=trigger_words, categories=categories,
+                        usage_notes=row[8] or "", source_url=row[9],
+                        license_info=row[10], size_mb=row[11],
+                        installed_date=row[12], last_used=row[13],
+                        usage_count=row[14] or 0, default_scaling=row[15] or 1.0
+                    )
+                    loras.append(lora)
+
+                return loras
+
+        except Exception as e:
+            print(f"Failed to get LoRAs: {e}")
+            return []
+
+    def get_loras_by_base_model_type(self, base_model_type: ModelType) -> List[LoRAInfo]:
+        """Get LoRA adapters compatible with a specific base model type."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT * FROM loras WHERE base_model_type = ? ORDER BY name',
+                             (base_model_type.value,))
+
+                loras = []
+                for row in cursor.fetchall():
+                    # Parse trigger words and categories from JSON
+                    trigger_words = json.loads(row[6] or "[]")
+                    categories_data = json.loads(row[7] or "[]")
+                    categories = []
+                    for cat in categories_data:
+                        try:
+                            categories.append(ModelCategory(cat))
+                        except ValueError:
+                            pass
+
+                    lora = LoRAInfo(
+                        name=row[1], path=row[2], display_name=row[3] or "",
+                        base_model_type=base_model_type, description=row[5] or "",
+                        trigger_words=trigger_words, categories=categories,
+                        usage_notes=row[8] or "", source_url=row[9],
+                        license_info=row[10], size_mb=row[11],
+                        installed_date=row[12], last_used=row[13],
+                        usage_count=row[14] or 0, default_scaling=row[15] or 1.0
+                    )
+                    loras.append(lora)
+
+                return loras
+
+        except Exception as e:
+            print(f"Failed to get LoRAs by base model type: {e}")
+            return []
+
+    def delete_lora(self, lora_name: str) -> bool:
+        """Delete a LoRA adapter from the database."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM loras WHERE name = ?', (lora_name,))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Failed to delete LoRA: {e}")
+            return False
+
+    def update_lora_usage(self, lora_name: str) -> None:
+        """Update usage statistics for a LoRA adapter."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''UPDATE loras
+                    SET usage_count = usage_count + 1,
+                        last_used = ?,
+                        updated_at = ?
+                    WHERE name = ?''', (datetime.now().isoformat(), datetime.now().isoformat(), lora_name))
+                conn.commit()
+        except Exception as e:
+            print(f"Failed to update LoRA usage: {e}")
+
+    def get_lora_names(self) -> List[str]:
+        """Get list of installed LoRA adapter names."""
+        loras = self.get_all_loras()
+        return [lora.name for lora in loras]
 
     def export_model_metadata(self, model_name: str, export_path: str) -> Tuple[bool, str]:
         """Export model metadata to a JSON file for sharing."""

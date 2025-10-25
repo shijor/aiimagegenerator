@@ -20,6 +20,14 @@ def _get_diffusers_imports():
     except ImportError as e:
         raise ImportError(f"Failed to import diffusers: {e}")
 
+def _get_lora_imports():
+    """Lazy import of LoRA-related modules to avoid compatibility issues."""
+    try:
+        from peft import LoraConfig, PeftModel
+        return LoraConfig, PeftModel
+    except ImportError as e:
+        raise ImportError(f"Failed to import PEFT for LoRA support: {e}. Install with: pip install peft")
+
 def _get_transformers_imports():
     """Lazy import of transformers to avoid compatibility issues."""
     try:
@@ -320,6 +328,36 @@ class ImageGenerator(QThread):
 
         return schedulers.get(scheduler_name)
 
+    def _inject_lora_trigger_words(self, prompt: str) -> str:
+        """Inject LoRA trigger words into the prompt."""
+        # Access the loaded LoRAs from the ImageGenerationService
+        # We need to get this from the service that created this generator
+        # For now, we'll assume the model has access to loaded LoRAs through some mechanism
+
+        # Check if the model has loaded LoRAs (this would be set by the service)
+        if not hasattr(self.model, '_loaded_loras') or not self.model._loaded_loras:
+            return prompt
+
+        trigger_words = []
+        for lora_name, (lora_path, scaling) in self.model._loaded_loras.items():
+            # We need to get the LoRA info to access trigger words
+            # This requires access to the LoRA database or cached info
+            # For now, we'll use a placeholder - in practice, this would be
+            # populated by the ImageGenerationService when creating the generator
+
+            # Try to get trigger words from model attributes (set by service)
+            if hasattr(self.model, f'_lora_trigger_words_{lora_name}'):
+                words = getattr(self.model, f'_lora_trigger_words_{lora_name}')
+                if words:
+                    trigger_words.extend(words)
+
+        if not trigger_words:
+            return prompt
+
+        # Inject trigger words at the beginning of the prompt
+        enhanced_prompt = ", ".join(trigger_words) + ", " + prompt
+        return enhanced_prompt
+
     def _truncate_prompt(self, prompt: str, max_tokens: int = 75) -> str:
         """Truncate prompt to fit within token limit."""
         if not prompt:
@@ -365,8 +403,16 @@ class ImageGenerator(QThread):
             print(f"Prompt length: {len(self.prompt)} characters")
             print(f"Parameters: steps={self.params.steps}, guidance={self.params.guidance_scale}, size={self.params.width}x{self.params.height}")
 
-            # Truncate prompt if necessary
+            # Inject LoRA trigger words into prompt if available
             original_prompt = self.prompt
+            self.prompt = self._inject_lora_trigger_words(self.prompt)
+
+            if self.prompt != original_prompt:
+                print(f"LoRA trigger words injected into prompt")
+                print(f"Original: '{original_prompt}'")
+                print(f"Enhanced: '{self.prompt}'")
+
+            # Truncate prompt if necessary
             self.prompt = self._truncate_prompt(self.prompt)
 
             if self.prompt != original_prompt:
@@ -459,6 +505,7 @@ class ImageGenerationService:
     def __init__(self):
         self.model = None  # Can be StableDiffusionPipeline or StableDiffusionXLPipeline
         self._current_model_path: str = None
+        self._loaded_loras = {}  # Dict of loaded LoRA adapters: {name: (path, scaling)}
         self._ensure_models_directory()
 
     def _ensure_models_directory(self) -> None:
@@ -656,17 +703,241 @@ class ImageGenerationService:
             print(f"Failed to load model: {e}")
             return False
 
+    def load_lora(self, lora_path: str, lora_name: str, scaling: float = 1.0) -> bool:
+        """Load a LoRA adapter into the current model."""
+        try:
+            if not self.model:
+                raise RuntimeError("No base model loaded. Load a model first before applying LoRA.")
+
+            print(f"Loading LoRA adapter: {lora_name} from {lora_path} with scaling {scaling}")
+
+            # Check if LoRA file exists
+            if not os.path.exists(lora_path):
+                raise FileNotFoundError(f"LoRA file not found: {lora_path}")
+
+            # Create a valid adapter name from the LoRA name
+            # Adapter names must be valid Python identifiers (no dots, no special chars)
+            import re
+            adapter_name = re.sub(r'[^\w]', '_', lora_name)  # Replace non-word chars with underscores
+            if not adapter_name or not adapter_name[0].isalpha():
+                adapter_name = f"lora_{adapter_name}"  # Ensure it starts with a letter
+
+            print(f"Using adapter name: '{adapter_name}' for LoRA '{lora_name}'")
+
+            # Get LoRA imports
+            LoraConfig, PeftModel = _get_lora_imports()
+
+            # Load LoRA configuration and weights
+            # For diffusers-compatible LoRA, we use the load_lora_weights method
+            if hasattr(self.model, 'load_lora_weights'):
+                # Use the built-in diffusers LoRA loading method
+                self.model.load_lora_weights(lora_path, adapter_name=adapter_name)
+                print(f"LoRA '{lora_name}' loaded using diffusers method")
+            else:
+                # Fallback to PEFT method if available
+                try:
+                    # Create LoRA config
+                    lora_config = LoraConfig(
+                        r=16,  # Default rank
+                        lora_alpha=scaling * 16,  # Scale alpha with scaling factor
+                        target_modules=["to_k", "to_q", "to_v", "to_out.0"],  # Attention layers
+                        lora_dropout=0.0,
+                        bias="none",
+                    )
+
+                    # Load LoRA model
+                    self.model = PeftModel.from_pretrained(
+                        self.model,
+                        lora_path,
+                        config=lora_config,
+                        adapter_name=adapter_name
+                    )
+                    print(f"LoRA '{lora_name}' loaded using PEFT method")
+                except Exception as peft_error:
+                    print(f"PEFT LoRA loading failed: {peft_error}")
+                    raise RuntimeError(f"Failed to load LoRA using available methods: {peft_error}")
+
+            # Store loaded LoRA info using the original name as key, but adapter_name for internal use
+            self._loaded_loras[lora_name] = (lora_path, scaling, adapter_name)
+
+            # Set the LoRA adapter as active if it's the only one
+            if len(self._loaded_loras) == 1:
+                self.model.set_adapters([adapter_name])
+
+            print(f"✅ LoRA '{lora_name}' loaded successfully with scaling {scaling}")
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to load LoRA '{lora_name}': {str(e)}")
+            return False
+
+    def unload_lora(self, lora_name: str) -> bool:
+        """Unload a specific LoRA adapter."""
+        try:
+            if lora_name not in self._loaded_loras:
+                print(f"LoRA '{lora_name}' is not currently loaded")
+                return False
+
+            if not self.model:
+                print("No model loaded")
+                return False
+
+            print(f"Unloading LoRA adapter: {lora_name}")
+
+            # Get the adapter name before removing from dict
+            _, _, adapter_name = self._loaded_loras[lora_name]
+
+            # Remove from loaded LoRAs dict
+            del self._loaded_loras[lora_name]
+
+            # If using PEFT, unload the adapter
+            if hasattr(self.model, 'delete_adapter'):
+                try:
+                    self.model.delete_adapter(adapter_name)
+                    print(f"LoRA '{lora_name}' unloaded from PEFT model")
+                except Exception as e:
+                    print(f"Warning: Could not delete PEFT adapter '{adapter_name}': {e}")
+
+            # If using diffusers LoRA, unload it
+            elif hasattr(self.model, 'unload_lora_weights'):
+                try:
+                    self.model.unload_lora_weights()
+                    print(f"All LoRA weights unloaded from diffusers model")
+                    # Re-load remaining LoRAs if any
+                    for name, (path, scaling, _) in self._loaded_loras.items():
+                        self.load_lora(path, name, scaling)
+                except Exception as e:
+                    print(f"Warning: Could not unload LoRA weights: {e}")
+
+            print(f"✅ LoRA '{lora_name}' unloaded successfully")
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to unload LoRA '{lora_name}': {str(e)}")
+            return False
+
+    def unload_all_loras(self) -> bool:
+        """Unload all LoRA adapters."""
+        try:
+            if not self._loaded_loras:
+                return True
+
+            print(f"Unloading all {len(self._loaded_loras)} LoRA adapters")
+
+            # Unload all LoRAs
+            for lora_name in list(self._loaded_loras.keys()):
+                self.unload_lora(lora_name)
+
+            # Clear the loaded LoRAs dict
+            self._loaded_loras.clear()
+
+            print("✅ All LoRA adapters unloaded successfully")
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to unload all LoRAs: {str(e)}")
+            return False
+
+    def get_loaded_loras(self) -> dict:
+        """Get information about currently loaded LoRA adapters."""
+        return self._loaded_loras.copy()
+
+    def set_lora_scaling(self, lora_name: str, scaling: float) -> bool:
+        """Set the scaling factor for a loaded LoRA adapter."""
+        try:
+            if lora_name not in self._loaded_loras:
+                print(f"LoRA '{lora_name}' is not currently loaded")
+                return False
+
+            if not self.model:
+                print("No model loaded")
+                return False
+
+            print(f"Setting LoRA '{lora_name}' scaling to {scaling}")
+
+            # Update scaling in our tracking dict
+            path, _, adapter_name = self._loaded_loras[lora_name]
+            self._loaded_loras[lora_name] = (path, scaling, adapter_name)
+
+            # If using PEFT, update the scaling
+            if hasattr(self.model, 'set_adapter_lora_scaling'):
+                try:
+                    self.model.set_adapter_lora_scaling(adapter_name, scaling)
+                    print(f"LoRA scaling updated in PEFT model")
+                except Exception as e:
+                    print(f"Warning: Could not update PEFT scaling: {e}")
+
+            print(f"✅ LoRA '{lora_name}' scaling set to {scaling}")
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to set LoRA scaling: {str(e)}")
+            return False
+
+    def apply_lora_adapters(self, lora_configs: list) -> bool:
+        """Apply multiple LoRA adapters with their configurations."""
+        try:
+            if not self.model:
+                raise RuntimeError("No base model loaded")
+
+            if not lora_configs:
+                # No LoRAs to apply, unload all
+                return self.unload_all_loras()
+
+            print(f"Applying {len(lora_configs)} LoRA adapters")
+
+            # Unload all existing LoRAs first
+            self.unload_all_loras()
+
+            # Load new LoRAs
+            loaded_adapters = []
+            for config in lora_configs:
+                lora_name = config.get('name')
+                lora_path = config.get('path')
+                scaling = config.get('scaling', 1.0)
+
+                if not lora_name or not lora_path:
+                    print(f"Skipping invalid LoRA config: {config}")
+                    continue
+
+                if self.load_lora(lora_path, lora_name, scaling):
+                    loaded_adapters.append(lora_name)
+                else:
+                    print(f"Failed to load LoRA: {lora_name}")
+
+            # Set active adapters
+            if loaded_adapters and hasattr(self.model, 'set_adapters'):
+                self.model.set_adapters(loaded_adapters)
+                print(f"Active LoRA adapters: {loaded_adapters}")
+
+            print(f"✅ Applied {len(loaded_adapters)} LoRA adapters successfully")
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to apply LoRA adapters: {str(e)}")
+            return False
+
     def generate_image(self, prompt: str, params: GenerationParams) -> ImageGenerator:
-        """Create image generator thread."""
+        """Create image generator thread with LoRA support."""
         if not self.model:
             raise RuntimeError("Model not loaded")
+
+        # Apply LoRA adapters from generation parameters if specified
+        if hasattr(params, 'lora_adapters') and params.lora_adapters:
+            print(f"Applying LoRA adapters for generation: {params.lora_adapters}")
+            self.apply_lora_adapters(params.lora_adapters)
 
         return ImageGenerator(self.model, prompt, params)
 
     def unload_model(self):
-        """Unload the model to free memory."""
+        """Unload the model and all LoRA adapters to free memory."""
         if self.model:
+            # Unload all LoRAs first
+            self.unload_all_loras()
+
+            # Unload the base model
             del self.model
             self.model = None
+
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

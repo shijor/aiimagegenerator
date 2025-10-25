@@ -14,3 +14,4 @@ tokenizers==0.21.0
 sentencepiece==0.2.0
 protobuf==5.29.2
 huggingface-hub==0.28.1
+peft==0.14.0

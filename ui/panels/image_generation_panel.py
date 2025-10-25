@@ -58,6 +58,31 @@ class ImageGenerationPanel:
         prompts_group.setLayout(prompts_layout)
         layout.addWidget(prompts_group)
 
+        # LoRA Adapters Section
+        lora_group = QGroupBox("LoRA Adapters")
+        lora_layout = QVBoxLayout()
+
+        # LoRA list and controls
+        self.lora_list_widget = QWidget()
+        self.lora_list_layout = QVBoxLayout()
+        self.lora_list_widget.setLayout(self.lora_list_layout)
+
+        # Add LoRA button
+        add_lora_btn = QPushButton("➕ Add LoRA")
+        add_lora_btn.clicked.connect(self._add_lora_adapter)
+        lora_layout.addWidget(add_lora_btn)
+
+        # Scroll area for LoRA items
+        from PyQt5.QtWidgets import QScrollArea
+        lora_scroll = QScrollArea()
+        lora_scroll.setWidget(self.lora_list_widget)
+        lora_scroll.setWidgetResizable(True)
+        lora_scroll.setMaximumHeight(200)
+        lora_layout.addWidget(lora_scroll)
+
+        lora_group.setLayout(lora_layout)
+        layout.addWidget(lora_group)
+
         # Parameters Group
         params_group = QGroupBox("Parameters")
         params_layout = QFormLayout()
@@ -404,6 +429,9 @@ class ImageGenerationPanel:
         use_xformers = self.xformers_checkbox.isChecked()
         vae_tiling = self.vae_tiling_checkbox.isChecked()
 
+        # Get selected LoRA adapters
+        lora_adapters = self._get_selected_loras()
+
         params = GenerationParams(
             steps=steps,
             guidance_scale=guidance,
@@ -414,7 +442,8 @@ class ImageGenerationPanel:
             scheduler=scheduler,
             quantization=quantization,
             use_xformers=use_xformers,
-            vae_tiling=vae_tiling
+            vae_tiling=vae_tiling,
+            lora_adapters=lora_adapters
         )
 
         # Disable UI and enable cancel
@@ -682,6 +711,132 @@ class ImageGenerationPanel:
                 return False
 
         return True
+
+    def _add_lora_adapter(self):
+        """Add a LoRA adapter selection widget."""
+        # Get available LoRA adapters
+        available_loras = self.model_manager.get_installed_loras()
+
+        if not available_loras:
+            QMessageBox.information(None, "No LoRA Adapters",
+                                  "No LoRA adapters are currently installed.\n\n"
+                                  "Please install LoRA adapters first using the Model Management panel.")
+            return
+
+        # Create LoRA selection dialog
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QPushButton
+
+        dialog = QDialog(self.sidebar)
+        dialog.setWindowTitle("Select LoRA Adapter")
+        dialog.setModal(True)
+
+        layout = QVBoxLayout()
+
+        # List of available LoRAs
+        lora_list = QListWidget()
+        for lora in available_loras:
+            display_name = lora.display_name or lora.name
+            item = QListWidgetItem(f"{display_name} ({lora.base_model_type.value if lora.base_model_type else 'Any'})")
+            item.setData(Qt.UserRole, lora)
+            lora_list.addItem(item)
+
+        layout.addWidget(lora_list)
+
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        add_btn = QPushButton("Add LoRA")
+        add_btn.clicked.connect(dialog.accept)
+        add_btn.setDefault(True)
+
+        buttons_layout.addWidget(cancel_btn)
+        buttons_layout.addWidget(add_btn)
+        layout.addLayout(buttons_layout)
+
+        dialog.setLayout(layout)
+
+        if dialog.exec_() == QDialog.Accepted and lora_list.currentItem():
+            selected_lora = lora_list.currentItem().data(Qt.UserRole)
+            self._create_lora_item_widget(selected_lora)
+
+    def _create_lora_item_widget(self, lora):
+        """Create a widget for managing a LoRA adapter."""
+        from PyQt5.QtWidgets import QFrame, QHBoxLayout, QLabel, QDoubleSpinBox, QPushButton
+
+        # Create container frame
+        frame = QFrame()
+        frame.setFrameStyle(QFrame.Box)
+        frame.setLineWidth(1)
+        layout = QHBoxLayout()
+        frame.setLayout(layout)
+
+        # LoRA name label
+        display_name = lora.display_name or lora.name
+        name_label = QLabel(display_name)
+        name_label.setToolTip(f"Path: {lora.path}\nDescription: {lora.description}")
+        layout.addWidget(name_label)
+
+        # Scaling factor input
+        scaling_label = QLabel("Scale:")
+        layout.addWidget(scaling_label)
+
+        scaling_input = QDoubleSpinBox()
+        scaling_input.setRange(0.0, 2.0)
+        scaling_input.setValue(lora.default_scaling)
+        scaling_input.setSingleStep(0.1)
+        scaling_input.setFixedWidth(60)
+        layout.addWidget(scaling_input)
+
+        # Remove button
+        remove_btn = QPushButton("❌")
+        remove_btn.setFixedWidth(30)
+        remove_btn.setToolTip("Remove this LoRA adapter")
+        remove_btn.clicked.connect(lambda: self._remove_lora_item(frame, lora.name))
+        layout.addWidget(remove_btn)
+
+        # Store references for later use
+        frame.lora_name = lora.name
+        frame.scaling_input = scaling_input
+
+        # Add to the LoRA list
+        self.lora_list_layout.addWidget(frame)
+
+    def _remove_lora_item(self, frame, lora_name):
+        """Remove a LoRA adapter item from the UI."""
+        # Remove from layout
+        self.lora_list_layout.removeWidget(frame)
+        frame.setParent(None)
+        frame.deleteLater()
+
+    def _get_selected_loras(self):
+        """Get list of selected LoRA adapters with their scaling factors and paths."""
+        lora_configs = []
+
+        # Get all installed LoRAs for path lookup
+        installed_loras = self.model_manager.get_installed_loras()
+        lora_path_map = {lora.name: lora.path for lora in installed_loras}
+
+        # Iterate through all LoRA item frames
+        for i in range(self.lora_list_layout.count()):
+            item = self.lora_list_layout.itemAt(i)
+            if item:
+                widget = item.widget()
+                if hasattr(widget, 'lora_name') and hasattr(widget, 'scaling_input'):
+                    lora_name = widget.lora_name
+                    lora_path = lora_path_map.get(lora_name)
+
+                    if lora_path:  # Only include if we can find the path
+                        lora_config = {
+                            'name': lora_name,
+                            'path': lora_path,
+                            'scaling': widget.scaling_input.value()
+                        }
+                        lora_configs.append(lora_config)
+                    else:
+                        print(f"Warning: Could not find path for LoRA '{lora_name}'")
+
+        return lora_configs
 
     def save_image(self):
         """Save the generated image."""
