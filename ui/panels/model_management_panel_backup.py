@@ -1,15 +1,13 @@
 """
 Model management panel with sidebar and main area - refactored to use modular components.
 """
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog, QScrollArea, QGroupBox, QMessageBox, QInputDialog, QSizePolicy, QProgressBar
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog, QScrollArea, QGroupBox, QMessageBox, QInputDialog
 from PyQt5.QtCore import pyqtSignal, Qt
-from typing import List
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from models.model_info import ModelInfo, LoRAInfo, IPAdapterInfo
 from services.model_management_service import ModelManagementService
 from services.model_manager import ModelManager
 from ui.components.model_list_item import ModelListItem, LoRAListItem, ProgressDisplay
@@ -17,9 +15,6 @@ from ui.dialogs.model_install_dialog import ModelInstallDialog
 from ui.dialogs.model_edit_dialog import ModelEditDialog
 from ui.dialogs.lora_install_dialog import LoRAInstallDialog
 from ui.dialogs.lora_edit_dialog import LoRAEditDialog
-from ui.dialogs.ip_adapter_install_dialog import IPAdapterInstallDialog
-from ui.dialogs.ip_adapter_edit_dialog import IPAdapterEditDialog
-from ui.dialogs.manual_install_dialog import ManualInstallDialog
 
 
 class ModelManagementPanel(QWidget):
@@ -29,7 +24,6 @@ class ModelManagementPanel(QWidget):
 
     def __init__(self, model_manager: ModelManager):
         super().__init__()
-        self.model_manager = model_manager
         self.service = ModelManagementService(model_manager)
 
         # Load saved default folder if available
@@ -93,18 +87,6 @@ class ModelManagementPanel(QWidget):
 
         scan_group.setLayout(scan_layout)
         layout.addWidget(scan_group)
-
-        # Manual Installation Section
-        manual_group = QGroupBox("Manual Installation")
-        manual_layout = QVBoxLayout()
-
-        manual_install_btn = QPushButton('➕ Manual Install')
-        manual_install_btn.setToolTip('Manually install models, LoRAs, or IP-Adapters from files')
-        manual_install_btn.clicked.connect(self.manual_install)
-        manual_layout.addWidget(manual_install_btn)
-
-        manual_group.setLayout(manual_layout)
-        layout.addWidget(manual_group)
 
         # Undo/Redo Section
         undo_group = QGroupBox("Operations")
@@ -310,10 +292,9 @@ class ModelManagementPanel(QWidget):
         self._clear_layout(self.available_models_layout)
         self.available_models_layout.addWidget(QLabel("Scanning for models and LoRAs..."))
 
-        # Scan for model files, LoRA files, and IP-Adapter files
+        # Scan for model files and LoRA files
         model_files = self.model_manager.scan_models_in_folder(self.selected_folder)
         lora_files = self.model_manager.scan_loras_in_folder(self.selected_folder)
-        ip_adapter_files = self.model_manager.scan_ip_adapters_in_folder(self.selected_folder)
 
         # Separate valid and unrecognized models
         valid_models = [m for m in model_files if m.get('validation_status') == 'valid']
@@ -322,9 +303,9 @@ class ModelManagementPanel(QWidget):
         # Update UI with results
         self._clear_layout(self.available_models_layout)
 
-        total_files = len(model_files) + len(lora_files) + len(ip_adapter_files)
+        total_files = len(model_files) + len(lora_files)
         if total_files == 0:
-            self.available_models_layout.addWidget(QLabel("No model, LoRA, or IP-Adapter files found."))
+            self.available_models_layout.addWidget(QLabel("No model or LoRA files found."))
         else:
             # Show valid models first
             if valid_models:
@@ -336,39 +317,9 @@ class ModelManagementPanel(QWidget):
                     model_widget = self._create_available_model_widget(model_info)
                     self.available_models_layout.addWidget(model_widget)
 
-            # Show available LoRAs
-            if lora_files:
-                if valid_models:  # Add separator if we have valid models above
-                    separator = QWidget()
-                    separator.setFixedHeight(20)
-                    self.available_models_layout.addWidget(separator)
-
-                loras_header = QLabel("🎭 LoRA ADAPTERS")
-                loras_header.setStyleSheet("font-weight: bold; font-size: 14px; color: #FF6B35; margin-top: 10px; margin-bottom: 5px;")
-                self.available_models_layout.addWidget(loras_header)
-
-                for lora_info in lora_files:
-                    lora_widget = self._create_available_lora_widget(lora_info)
-                    self.available_models_layout.addWidget(lora_widget)
-
-            # Show available IP-Adapters
-            if ip_adapter_files:
-                if valid_models or lora_files:  # Add separator if we have models above
-                    separator = QWidget()
-                    separator.setFixedHeight(20)
-                    self.available_models_layout.addWidget(separator)
-
-                ip_adapters_header = QLabel("🎨 IP-ADAPTERS")
-                ip_adapters_header.setStyleSheet("font-weight: bold; font-size: 14px; color: #9C27B0; margin-top: 10px; margin-bottom: 5px;")
-                self.available_models_layout.addWidget(ip_adapters_header)
-
-                for ip_adapter_info in ip_adapter_files:
-                    ip_adapter_widget = self._create_available_ip_adapter_widget(ip_adapter_info)
-                    self.available_models_layout.addWidget(ip_adapter_widget)
-
             # Show unrecognized models
             if unrecognized_models:
-                if valid_models or lora_files or ip_adapter_files:  # Add separator if we have models above
+                if valid_models:  # Add separator if we have valid models above
                     separator = QWidget()
                     separator.setFixedHeight(20)
                     self.available_models_layout.addWidget(separator)
@@ -386,6 +337,21 @@ class ModelManagementPanel(QWidget):
                 for model_info in unrecognized_models:
                     model_widget = self._create_unrecognized_model_widget(model_info)
                     self.available_models_layout.addWidget(model_widget)
+
+            # Show available LoRAs
+            if lora_files:
+                if valid_models or unrecognized_models:  # Add separator if we have models above
+                    separator = QWidget()
+                    separator.setFixedHeight(20)
+                    self.available_models_layout.addWidget(separator)
+
+                loras_header = QLabel("🎭 LoRA ADAPTERS")
+                loras_header.setStyleSheet("font-weight: bold; font-size: 14px; color: #FF6B35; margin-top: 10px; margin-bottom: 5px;")
+                self.available_models_layout.addWidget(loras_header)
+
+                for lora_info in lora_files:
+                    lora_widget = self._create_available_lora_widget(lora_info)
+                    self.available_models_layout.addWidget(lora_widget)
 
         # Dynamically adjust scroll area height based on number of items
         self._adjust_available_models_height(total_files)
@@ -634,104 +600,6 @@ class ModelManagementPanel(QWidget):
 
         return widget
 
-    def _create_available_ip_adapter_widget(self, ip_adapter_info: dict) -> QWidget:
-        """Create compact table row widget for available IP-Adapter."""
-        widget = QWidget()
-        layout = QHBoxLayout()
-        layout.setContentsMargins(5, 2, 5, 2)
-        layout.setSpacing(10)
-
-        # Column 1: Icon + Name (flexible width)
-        name_layout = QHBoxLayout()
-        name_layout.setSpacing(6)
-
-        icon_label = QLabel("🎨")
-        icon_label.setStyleSheet("font-size: 14px;")
-        name_layout.addWidget(icon_label)
-
-        name_label = QLabel(ip_adapter_info['name'])
-        name_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #9C27B0;")
-        name_label.setToolTip(ip_adapter_info['name'])  # Full name on hover
-        name_layout.addWidget(name_label)
-
-        name_layout.addStretch()
-        layout.addLayout(name_layout, stretch=3)  # Give name column more space
-
-        # Column 2: Type (fixed width)
-        type_label = QLabel("IP-Adapter")
-        type_label.setStyleSheet("""
-            font-size: 11px;
-            color: #666;
-            background-color: #f3e5f5;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-weight: 500;
-        """)
-        type_label.setFixedWidth(120)
-        layout.addWidget(type_label)
-
-        # Column 3: Size (fixed width)
-        size_label = QLabel(f"{ip_adapter_info['size_mb']:.1f} MB")
-        size_label.setStyleSheet("color: #555; font-size: 11px; font-weight: 500;")
-        size_label.setFixedWidth(70)
-        layout.addWidget(size_label)
-
-        # Column 4: Path (flexible width, truncated)
-        path_text = ip_adapter_info['path']
-        if len(path_text) > 40:
-            path_text = "..." + path_text[-37:]
-        path_label = QLabel(path_text)
-        path_label.setStyleSheet("""
-            color: #777;
-            font-size: 10px;
-            font-family: 'Segoe UI', monospace;
-        """)
-        path_label.setToolTip(ip_adapter_info['path'])  # Full path on hover
-        layout.addWidget(path_label, stretch=2)
-
-        # Column 5: Install button (fixed width)
-        install_btn = QPushButton('Install')
-        install_btn.setProperty("ip_adapter_name", ip_adapter_info['name'])
-        install_btn.setProperty("ip_adapter_path", ip_adapter_info['path'])
-        install_btn.clicked.connect(self._on_install_ip_adapter_clicked)
-        install_btn.setFixedSize(70, 24)
-        install_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #9C27B0;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: bold;
-                padding: 2px 8px;
-            }
-            QPushButton:hover {
-                background-color: #BA68C8;
-            }
-            QPushButton:pressed {
-                background-color: #7B1FA2;
-            }
-        """)
-        layout.addWidget(install_btn)
-
-        # Set layout and compact styling
-        widget.setLayout(layout)
-        widget.setStyleSheet("""
-            QWidget {
-                border: 1px solid #e0e0e0;
-                border-radius: 4px;
-                background-color: #ffffff;
-                margin: 1px;
-            }
-            QWidget:hover {
-                background-color: #faf5ff;
-                border-color: #9C27B0;
-            }
-        """)
-        widget.setFixedHeight(30)
-
-        return widget
-
     def _create_unrecognized_model_widget(self, model_info: dict) -> QWidget:
         """Create compact table row widget for unrecognized model."""
         widget = QWidget()
@@ -933,15 +801,6 @@ This model was found but failed validation. It may not be compatible with the cu
             if lora_name and lora_path:
                 self._install_lora(lora_name, lora_path)
 
-    def _on_install_ip_adapter_clicked(self):
-        """Handle IP-Adapter install button click."""
-        button = self.sender()
-        if button:
-            ip_adapter_name = button.property("ip_adapter_name")
-            ip_adapter_path = button.property("ip_adapter_path")
-            if ip_adapter_name and ip_adapter_path:
-                self._install_ip_adapter(ip_adapter_name, ip_adapter_path)
-
     def _install_model(self, name: str, path: str, skip_validation: bool = False):
         """Install a model with enhanced metadata collection and progress tracking in the panel."""
         try:
@@ -1025,90 +884,6 @@ This model was found but failed validation. It may not be compatible with the cu
             traceback.print_exc()
             self.progress_label.setText("Installation error!")
             QMessageBox.critical(self.sidebar, "Error", f"Unexpected error during installation: {str(e)}")
-        finally:
-            # Hide progress bar after a short delay
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(2000, lambda: self._hide_progress())
-
-    def _install_ip_adapter(self, name: str, path: str):
-        """Install an IP-Adapter with enhanced metadata collection."""
-        try:
-            print(f"IP-ADAPTER INSTALLATION: Starting installation for IP-Adapter '{name}' from path '{path}'")
-
-            # Validate inputs
-            if not name or not path:
-                QMessageBox.critical(self.sidebar, "Error", "Invalid IP-Adapter name or path")
-                return
-
-            if not os.path.exists(path):
-                QMessageBox.critical(self.sidebar, "Error", f"IP-Adapter file does not exist: {path}")
-                return
-
-            # Show installation dialog for metadata collection
-            dialog = IPAdapterInstallDialog(name, path, self)
-            print("IP-ADAPTER INSTALLATION: Dialog created, showing...")
-
-            result = dialog.exec_()
-            print(f"IP-ADAPTER INSTALLATION: Dialog result: {result}")
-
-            # Check if the Install button was clicked
-            if dialog.accepted:
-                print("IP-ADAPTER INSTALLATION: Dialog accepted, getting metadata...")
-
-                # Get metadata from dialog
-                metadata = dialog.get_metadata()
-                print(f"IP-ADAPTER INSTALLATION: Metadata collected: {metadata}")
-
-                # Show progress in the panel
-                self.progress_bar.setVisible(True)
-                self.progress_bar.setValue(0)
-                self.progress_label.setText("Starting IP-Adapter installation...")
-                print("IP-ADAPTER INSTALLATION: Progress UI initialized")
-
-                # Progress callback function
-                def update_progress(message: str, percentage: int):
-                    print(f"IP-ADAPTER INSTALLATION: Progress update - {percentage}% - {message}")
-                    self.progress_label.setText(message)
-                    self.progress_bar.setValue(percentage)
-                    # Process events to keep UI responsive
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.processEvents()
-
-                print("IP-ADAPTER INSTALLATION: Calling model_manager.install_ip_adapter...")
-
-                # Install IP-Adapter with metadata and progress callback
-                success, message = self.model_manager.install_ip_adapter(
-                    name, path,
-                    display_name=metadata.get('display_name', ''),
-                    description=metadata.get('description', ''),
-                    categories=metadata.get('categories', []),
-                    usage_notes=metadata.get('usage_notes', ''),
-                    source_url=metadata.get('source_url'),
-                    license_info=metadata.get('license_info'),
-                    progress_callback=update_progress
-                )
-
-                print(f"IP-ADAPTER INSTALLATION: IP-Adapter installation result - Success: {success}, Message: {message}")
-
-                if success:
-                    self.progress_label.setText("IP-Adapter installation completed successfully!")
-                    QMessageBox.information(self.sidebar, "Success", message)
-                    print("IP-ADAPTER INSTALLATION: Installation completed successfully!")
-                else:
-                    self.progress_label.setText("IP-Adapter installation failed!")
-                    QMessageBox.critical(self.sidebar, "Installation Failed", message)
-                    print(f"IP-ADAPTER INSTALLATION: Installation failed with message: {message}")
-
-            else:
-                print("IP-ADAPTER INSTALLATION: Dialog was cancelled by user")
-                # User cancelled - do nothing
-
-        except Exception as e:
-            print(f"IP-ADAPTER INSTALLATION: Exception occurred: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            self.progress_label.setText("IP-Adapter installation error!")
-            QMessageBox.critical(self.sidebar, "Error", f"Unexpected error during IP-Adapter installation: {str(e)}")
         finally:
             # Hide progress bar after a short delay
             from PyQt5.QtCore import QTimer
@@ -1208,21 +983,20 @@ This model was found but failed validation. It may not be compatible with the cu
         self.progress_bar.setValue(0)
 
     def _refresh_installed_models(self):
-        """Refresh the installed models, LoRAs, and IP-Adapters list."""
+        """Refresh the installed models and LoRAs list."""
         print("DEBUG: Starting _refresh_installed_models")
         self._clear_layout(self.installed_models_layout)
 
-        # Get models, LoRAs, and IP-Adapters
+        # Get both models and LoRAs
         installed_models = self.model_manager.get_installed_models()
         installed_loras = self.model_manager.get_installed_loras()
-        installed_ip_adapters = self.model_manager.get_all_ip_adapters()
 
-        print(f"DEBUG: Retrieved {len(installed_models)} models, {len(installed_loras)} LoRAs, and {len(installed_ip_adapters)} IP-Adapters from database")
+        print(f"DEBUG: Retrieved {len(installed_models)} models and {len(installed_loras)} LoRAs from database")
 
-        total_items = len(installed_models) + len(installed_loras) + len(installed_ip_adapters)
+        total_items = len(installed_models) + len(installed_loras)
 
         if total_items == 0:
-            self.installed_models_layout.addWidget(QLabel("No models, LoRAs, or IP-Adapters installed."))
+            self.installed_models_layout.addWidget(QLabel("No models or LoRAs installed."))
         else:
             # Sort by installation date (most recent first)
             all_items = []
@@ -1236,10 +1010,6 @@ This model was found but failed validation. It may not be compatible with the cu
             for lora in installed_loras:
                 all_items.append(('lora', lora))
 
-            # Add IP-Adapters with type indicator
-            for ip_adapter in installed_ip_adapters:
-                all_items.append(('ip_adapter', ip_adapter))
-
             # Sort by installation date (most recent first), handling None values
             all_items.sort(key=lambda x: getattr(x[1], 'installed_date', None) or '', reverse=True)
 
@@ -1248,10 +1018,8 @@ This model was found but failed validation. It may not be compatible with the cu
                 if item_type == 'model':
                     widget = self._create_installed_model_widget(item)
                     print(f"DEBUG: Created widget for model {item.name} with display_name: {item.display_name}, description: {item.description}")
-                elif item_type == 'lora':
+                else:  # lora
                     widget = self._create_installed_lora_widget(item)
-                else:  # ip_adapter
-                    widget = self._create_installed_ip_adapter_widget(item)
                 self.installed_models_layout.addWidget(widget)
 
         # Dynamically adjust scroll area height based on number of items
@@ -1562,149 +1330,6 @@ This model was found but failed validation. It may not be compatible with the cu
 
         return widget
 
-    def _create_installed_ip_adapter_widget(self, ip_adapter) -> QWidget:
-        """Create compact table row widget for installed IP-Adapter - matching available model layout style."""
-        widget = QWidget()
-        layout = QHBoxLayout()
-        layout.setContentsMargins(5, 2, 5, 2)
-        layout.setSpacing(10)
-
-        # Column 1: Icon + Name (flexible width)
-        name_layout = QHBoxLayout()
-        name_layout.setSpacing(6)
-
-        icon_label = QLabel("🎨")
-        icon_label.setStyleSheet("font-size: 14px;")
-        icon_label.setMinimumWidth(20)
-        name_layout.addWidget(icon_label)
-
-        display_name = ip_adapter.display_name if ip_adapter.display_name else ip_adapter.name
-        name_label = QLabel(display_name)
-        name_label.setStyleSheet("font-weight: bold; font-size: 12px; color: #9C27B0;")
-        name_label.setToolTip(f"Name: {ip_adapter.name}\nDisplay: {display_name}")
-        name_label.setMinimumWidth(150)  # Ensure minimum width for text
-        name_layout.addWidget(name_label)
-
-        name_layout.addStretch()
-        layout.addLayout(name_layout, stretch=4)  # Give name column more space
-
-        # Column 2: Type (fixed width)
-        type_label = QLabel("IP-Adapter")
-        type_label.setStyleSheet("""
-            font-size: 11px;
-            color: #666;
-            background-color: #f3e5f5;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-weight: 500;
-        """)
-        type_label.setFixedWidth(120)
-        type_label.setMinimumWidth(120)
-        layout.addWidget(type_label)
-
-        # Column 3: Size (fixed width)
-        try:
-            size_mb = float(ip_adapter.size_mb) if ip_adapter.size_mb and str(ip_adapter.size_mb).replace('.', '').isdigit() else 0.0
-        except (ValueError, TypeError):
-            size_mb = 0.0
-        size_label = QLabel(f"{size_mb:.1f} MB")
-        size_label.setStyleSheet("color: #555; font-size: 11px; font-weight: 500;")
-        size_label.setFixedWidth(70)
-        size_label.setMinimumWidth(70)
-        size_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(size_label)
-
-        # Column 4: Description (flexible width, truncated)
-        desc_text = ip_adapter.description or "No description"
-        if len(desc_text) > 50:
-            desc_text = "..." + desc_text[-47:]
-        desc_label = QLabel(desc_text)
-        desc_label.setStyleSheet("""
-            color: #777;
-            font-size: 10px;
-            font-family: 'Segoe UI', monospace;
-        """)
-        desc_label.setToolTip(ip_adapter.description or "No description")
-        desc_label.setMinimumWidth(200)  # Ensure minimum width for description text
-        desc_label.setWordWrap(False)  # Prevent wrapping
-        layout.addWidget(desc_label, stretch=3)
-
-        # Column 5: Action buttons (fixed width)
-        buttons_widget = QWidget()
-        buttons_layout = QHBoxLayout()
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.setSpacing(2)
-
-        # Edit button
-        edit_btn = QPushButton('Edit')
-        edit_btn.setProperty("ip_adapter_name", ip_adapter.name)
-        edit_btn.clicked.connect(self._on_edit_ip_adapter_clicked)
-        edit_btn.setFixedSize(45, 24)
-        edit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #FF9800;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-size: 10px;
-                font-weight: bold;
-                padding: 2px 4px;
-            }
-            QPushButton:hover {
-                background-color: #F57C00;
-            }
-            QPushButton:pressed {
-                background-color: #EF6C00;
-            }
-        """)
-        buttons_layout.addWidget(edit_btn)
-
-        # Delete button
-        delete_btn = QPushButton('Delete')
-        delete_btn.setProperty("ip_adapter_name", ip_adapter.name)
-        delete_btn.clicked.connect(self._on_delete_ip_adapter_clicked)
-        delete_btn.setFixedSize(55, 24)
-        delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #F44336;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-size: 10px;
-                font-weight: bold;
-                padding: 2px 4px;
-            }
-            QPushButton:hover {
-                background-color: #D32F2F;
-            }
-            QPushButton:pressed {
-                background-color: #B71C1C;
-            }
-        """)
-        buttons_layout.addWidget(delete_btn)
-
-        buttons_widget.setLayout(buttons_layout)
-        layout.addWidget(buttons_widget)
-
-        # Set layout and compact styling
-        widget.setLayout(layout)
-        widget.setStyleSheet("""
-            QWidget {
-                border: 1px solid #BA68C8;
-                border-radius: 4px;
-                background-color: #faf5ff;
-                margin: 1px;
-            }
-            QWidget:hover {
-                background-color: #f3e5f5;
-                border-color: #9C27B0;
-            }
-        """)
-        widget.setMinimumHeight(32)  # Slightly taller to accommodate text
-        widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-
-        return widget
-
     def _edit_lora_params(self, lora_name: str):
         """Edit LoRA parameters."""
         try:
@@ -1786,85 +1411,6 @@ This model was found but failed validation. It may not be compatible with the cu
                 self._refresh_installed_models()
             else:
                 QMessageBox.critical(self.sidebar, "Error", f"Failed to delete LoRA '{lora_name}'!")
-
-    def _edit_ip_adapter_params(self, ip_adapter_name: str):
-        """Edit IP-Adapter parameters."""
-        try:
-            # Refresh the installed items list first to get latest data
-            self._refresh_installed_models()
-
-            # Get the current IP-Adapter data
-            installed_ip_adapters = self.model_manager.get_all_ip_adapters()
-            current_ip_adapter = None
-            for ip_adapter in installed_ip_adapters:
-                if ip_adapter.name == ip_adapter_name:
-                    current_ip_adapter = ip_adapter
-                    break
-
-            if not current_ip_adapter:
-                QMessageBox.critical(self.sidebar, "Error", f"IP-Adapter '{ip_adapter_name}' not found!")
-                return
-
-            # Create and show edit dialog
-            dialog = IPAdapterEditDialog(current_ip_adapter, self)
-            result = dialog.exec_()
-
-            # Only proceed with save if Save button was clicked (AcceptRole)
-            if result == QMessageBox.AcceptRole:
-                # Get updated metadata
-                updated_metadata = dialog.get_metadata()
-
-                # Validate name uniqueness if changed
-                if updated_metadata['name'] != current_ip_adapter.name:
-                    # Check if new name already exists
-                    existing_names = [ip_adapter.name for ip_adapter in installed_ip_adapters if ip_adapter.name != current_ip_adapter.name]
-                    if updated_metadata['name'] in existing_names:
-                        QMessageBox.critical(self.sidebar, "Error",
-                                           f"IP-Adapter name '{updated_metadata['name']}' already exists!")
-                        return
-
-                # Create updated IP-Adapter info
-                updated_ip_adapter = IPAdapterInfo(
-                    name=updated_metadata['name'],
-                    path=current_ip_adapter.path,  # Path stays the same
-                    display_name=updated_metadata['display_name'],
-                    description=updated_metadata['description'],
-                    categories=updated_metadata['categories'],
-                    usage_notes=updated_metadata['usage_notes'],
-                    source_url=updated_metadata['source_url'],
-                    license_info=updated_metadata['license_info'],
-                    size_mb=current_ip_adapter.size_mb,  # Preserve size
-                    installed_date=current_ip_adapter.installed_date,  # Preserve install date
-                    last_used=current_ip_adapter.last_used,  # Preserve usage data
-                    usage_count=current_ip_adapter.usage_count  # Preserve usage count
-                )
-
-                # Save to database
-                if self.model_manager.db.update_ip_adapter(current_ip_adapter.name, updated_ip_adapter):
-                    QMessageBox.information(self.sidebar, "Success",
-                                          f"IP-Adapter '{ip_adapter_name}' parameters updated successfully!")
-
-                    # Refresh the UI
-                    self._refresh_installed_models()
-                else:
-                    QMessageBox.critical(self.sidebar, "Error", "Failed to update IP-Adapter parameters!")
-            # If result is RejectRole (Cancel) or any other value, do nothing
-
-        except Exception as e:
-            QMessageBox.critical(self.sidebar, "Error", f"Failed to edit IP-Adapter parameters: {str(e)}")
-
-    def _delete_ip_adapter(self, ip_adapter_name: str):
-        """Delete an IP-Adapter."""
-        reply = QMessageBox.question(self.sidebar, "Confirm Delete",
-                                   f"Are you sure you want to delete IP-Adapter '{ip_adapter_name}'?",
-                                   QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            success = self.model_manager.delete_ip_adapter(ip_adapter_name)
-            if success:
-                QMessageBox.information(self.sidebar, "Deleted", f"IP-Adapter '{ip_adapter_name}' deleted successfully!")
-                self._refresh_installed_models()
-            else:
-                QMessageBox.critical(self.sidebar, "Error", f"Failed to delete IP-Adapter '{ip_adapter_name}'!")
 
 
 
@@ -2050,22 +1596,6 @@ This model was found but failed validation. It may not be compatible with the cu
             if lora_name:
                 self._delete_lora(lora_name)
 
-    def _on_edit_ip_adapter_clicked(self):
-        """Handle edit button click for installed IP-Adapters."""
-        button = self.sender()
-        if button:
-            ip_adapter_name = button.property("ip_adapter_name")
-            if ip_adapter_name:
-                self._edit_ip_adapter_params(ip_adapter_name)
-
-    def _on_delete_ip_adapter_clicked(self):
-        """Handle delete button click for installed IP-Adapters."""
-        button = self.sender()
-        if button:
-            ip_adapter_name = button.property("ip_adapter_name")
-            if ip_adapter_name:
-                self._delete_ip_adapter(ip_adapter_name)
-
 
 
     def undo_operation(self):
@@ -2188,214 +1718,1704 @@ This model was found but failed validation. It may not be compatible with the cu
         else:
             QMessageBox.information(self.sidebar, "Cancelled", "Database clear operation cancelled.")
 
-    def manual_install(self):
-        """Show manual installation dialog for models, LoRAs, and IP-Adapters."""
-        try:
-            # Create and show the manual install dialog
-            dialog = ManualInstallDialog(self)
-            result = dialog.exec_()
-
-            # Check if the Install button was clicked
-            if dialog.accepted:
-                # Get installation data from dialog
-                install_data = dialog.get_install_data()
-                if not install_data:
-                    QMessageBox.critical(self.sidebar, "Error", "No installation data received!")
-                    return
-
-                install_type = install_data['type']
-                file_path = install_data['file_path']
-
-                # Route to appropriate installation method based on type
-                if install_type == 'model':
-                    self._install_model_from_manual_dialog(install_data)
-                elif install_type == 'lora':
-                    self._install_lora_from_manual_dialog(install_data)
-                elif install_type == 'ip_adapter':
-                    self._install_ip_adapter_from_manual_dialog(install_data)
-                else:
-                    QMessageBox.critical(self.sidebar, "Error", f"Unknown installation type: {install_type}")
-
-        except Exception as e:
-            QMessageBox.critical(self.sidebar, "Error", f"Manual installation failed: {str(e)}")
-
-    def _install_model_from_manual_dialog(self, install_data):
-        """Install a model from manual dialog data."""
-        try:
-            file_path = install_data['file_path']
-            name = install_data['name']
-
-            # Validate inputs
-            if not name or not file_path:
-                QMessageBox.critical(self.sidebar, "Error", "Invalid model name or path")
-                return
-
-            if not os.path.exists(file_path):
-                QMessageBox.critical(self.sidebar, "Error", f"Model file does not exist: {file_path}")
-                return
-
-            # Show progress in the panel
-            self.progress_bar.setVisible(True)
-            self.progress_bar.setValue(0)
-            self.progress_label.setText("Starting model installation...")
-
-            # Progress callback function
-            def update_progress(message: str, percentage: int):
-                self.progress_label.setText(message)
-                self.progress_bar.setValue(percentage)
-                # Process events to keep UI responsive
-                from PyQt5.QtWidgets import QApplication
-                QApplication.processEvents()
-
-            # Install model with metadata and progress callback
-            success, message = self.model_manager.install_model(
-                name, file_path,
-                display_name=install_data.get('display_name', ''),
-                categories=install_data.get('categories', []),
-                description=install_data.get('description', ''),
-                usage_notes=install_data.get('usage_notes', ''),
-                source_url=install_data.get('source_url'),
-                license_info=install_data.get('license_info'),
-                model_type=install_data.get('model_type'),
-                progress_callback=update_progress
-            )
-
-            if success:
-                self.progress_label.setText("Model installation completed successfully!")
-                QMessageBox.information(self.sidebar, "Success", message)
-                self._refresh_installed_models()
-                self.model_installed.emit()  # Notify other panels that a model was installed
-            else:
-                self.progress_label.setText("Model installation failed!")
-                QMessageBox.critical(self.sidebar, "Installation Failed", message)
-
-        except Exception as e:
-            self.progress_label.setText("Model installation error!")
-            QMessageBox.critical(self.sidebar, "Error", f"Unexpected error during model installation: {str(e)}")
-        finally:
-            # Hide progress bar after a short delay
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(2000, lambda: self._hide_progress())
-
-    def _install_lora_from_manual_dialog(self, install_data):
-        """Install a LoRA from manual dialog data."""
-        try:
-            file_path = install_data['file_path']
-            name = install_data['name']
-
-            # Validate inputs
-            if not name or not file_path:
-                QMessageBox.critical(self.sidebar, "Error", "Invalid LoRA name or path")
-                return
-
-            if not os.path.exists(file_path):
-                QMessageBox.critical(self.sidebar, "Error", f"LoRA file does not exist: {file_path}")
-                return
-
-            # Show progress in the panel
-            self.progress_bar.setVisible(True)
-            self.progress_bar.setValue(0)
-            self.progress_label.setText("Starting LoRA installation...")
-
-            # Progress callback function
-            def update_progress(message: str, percentage: int):
-                self.progress_label.setText(message)
-                self.progress_bar.setValue(percentage)
-                # Process events to keep UI responsive
-                from PyQt5.QtWidgets import QApplication
-                QApplication.processEvents()
-
-            # Install LoRA with metadata and progress callback
-            success, message = self.model_manager.install_lora(
-                name, file_path,
-                display_name=install_data.get('display_name', ''),
-                base_model_type=install_data.get('base_model_type'),
-                categories=install_data.get('categories', []),
-                description=install_data.get('description', ''),
-                trigger_words=install_data.get('trigger_words', []),
-                usage_notes=install_data.get('usage_notes', ''),
-                source_url=install_data.get('source_url'),
-                license_info=install_data.get('license_info'),
-                default_scaling=install_data.get('default_scaling', 1.0),
-                progress_callback=update_progress
-            )
-
-            if success:
-                self.progress_label.setText("LoRA installation completed successfully!")
-                QMessageBox.information(self.sidebar, "Success", message)
-                self._refresh_installed_models()
-            else:
-                self.progress_label.setText("LoRA installation failed!")
-                QMessageBox.critical(self.sidebar, "Installation Failed", message)
-
-        except Exception as e:
-            self.progress_label.setText("LoRA installation error!")
-            QMessageBox.critical(self.sidebar, "Error", f"Unexpected error during LoRA installation: {str(e)}")
-        finally:
-            # Hide progress bar after a short delay
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(2000, lambda: self._hide_progress())
-
-    def _install_ip_adapter_from_manual_dialog(self, install_data):
-        """Install an IP-Adapter from manual dialog data."""
-        try:
-            file_path = install_data['file_path']
-            name = install_data['name']
-
-            # Validate inputs
-            if not name or not file_path:
-                QMessageBox.critical(self.sidebar, "Error", "Invalid IP-Adapter name or path")
-                return
-
-            if not os.path.exists(file_path):
-                QMessageBox.critical(self.sidebar, "Error", f"IP-Adapter file does not exist: {file_path}")
-                return
-
-            # Show progress in the panel
-            self.progress_bar.setVisible(True)
-            self.progress_bar.setValue(0)
-            self.progress_label.setText("Starting IP-Adapter installation...")
-
-            # Progress callback function
-            def update_progress(message: str, percentage: int):
-                self.progress_label.setText(message)
-                self.progress_bar.setValue(percentage)
-                # Process events to keep UI responsive
-                from PyQt5.QtWidgets import QApplication
-                QApplication.processEvents()
-
-            # Install IP-Adapter with metadata and progress callback
-            success, message = self.model_manager.install_ip_adapter(
-                name, file_path,
-                display_name=install_data.get('display_name', ''),
-                description=install_data.get('description', ''),
-                categories=install_data.get('categories', []),
-                usage_notes=install_data.get('usage_notes', ''),
-                source_url=install_data.get('source_url'),
-                license_info=install_data.get('license_info'),
-                adapter_type=install_data.get('adapter_type'),
-                progress_callback=update_progress
-            )
-
-            if success:
-                self.progress_label.setText("IP-Adapter installation completed successfully!")
-                QMessageBox.information(self.sidebar, "Success", message)
-                self._refresh_installed_models()
-            else:
-                self.progress_label.setText("IP-Adapter installation failed!")
-                QMessageBox.critical(self.sidebar, "Installation Failed", message)
-
-        except Exception as e:
-            self.progress_label.setText("IP-Adapter installation error!")
-            QMessageBox.critical(self.sidebar, "Error", f"Unexpected error during IP-Adapter installation: {str(e)}")
-        finally:
-            # Hide progress bar after a short delay
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(2000, lambda: self._hide_progress())
-
     def _clear_layout(self, layout):
         """Clear all widgets from layout."""
         while layout.count():
             child = layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+
+
+class ModelInstallDialog(QDialog):
+    """Dialog for collecting model metadata during installation."""
+
+    def __init__(self, model_name: str, model_path: str, parent=None):
+        super().__init__(parent)
+        self.model_name = model_name
+        self.model_path = model_path
+
+        self.setWindowTitle("Install AI Model")
+        self.setModal(True)
+        self.setFixedSize(700, 600)
+
+        # Center the dialog
+        if parent:
+            parent_rect = parent.geometry()
+            self.move(
+                parent_rect.x() + (parent_rect.width() - self.width()) // 2,
+                parent_rect.y() + (parent_rect.height() - self.height()) // 2
+            )
+
+        self.accepted = False  # Track if user accepted
+        self._init_ui()
+
+    def _init_ui(self):
+        """Initialize the dialog UI."""
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Header section with icon and title
+        header_widget = QWidget()
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(15)
+
+        # Icon
+        icon_label = QLabel("📦")
+        icon_font = QFont()
+        icon_font.setPointSize(32)
+        icon_label.setFont(icon_font)
+        header_layout.addWidget(icon_label)
+
+        # Title and subtitle
+        title_widget = QWidget()
+        title_layout = QVBoxLayout()
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(5)
+
+        title_label = QLabel("Install AI Model")
+        title_font = QFont()
+        title_font.setPointSize(18)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        title_label.setStyleSheet("color: #1976D2;")
+        title_layout.addWidget(title_label)
+
+        model_label = QLabel(f"📁 {self.model_name}")
+        model_font = QFont()
+        model_font.setPointSize(12)
+        model_label.setFont(model_font)
+        model_label.setStyleSheet("color: #666;")
+        title_layout.addWidget(model_label)
+
+        title_widget.setLayout(title_layout)
+        header_layout.addWidget(title_widget, stretch=1)
+
+        header_widget.setLayout(header_layout)
+        layout.addWidget(header_widget)
+
+        # Add separator
+        separator = QWidget()
+        separator.setFixedHeight(2)
+        separator.setStyleSheet("background-color: #e0e0e0; border-radius: 1px;")
+        layout.addWidget(separator)
+
+        # Scrollable content area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setMinimumHeight(350)
+        scroll_area.setMaximumHeight(350)
+
+        content_widget = QWidget()
+        content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(15)
+
+        # File path info
+        path_group = QWidget()
+        path_layout = QVBoxLayout()
+        path_layout.setContentsMargins(0, 0, 0, 0)
+        path_layout.setSpacing(5)
+
+        path_label = QLabel("📂 Source Path:")
+        path_label.setStyleSheet("font-weight: bold; color: #333;")
+        path_layout.addWidget(path_label)
+
+        path_display = QLabel(self.model_path)
+        path_display.setWordWrap(True)
+        path_display.setStyleSheet("""
+            background-color: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 8px;
+            color: #666;
+            font-family: 'Segoe UI', monospace;
+            font-size: 11px;
+        """)
+        path_layout.addWidget(path_display)
+
+        path_group.setLayout(path_layout)
+        content_layout.addWidget(path_group)
+
+        # Metadata form
+        form_widget = QWidget()
+        form_layout = QVBoxLayout()
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout.setSpacing(12)
+
+        # Basic Information Section
+        basic_group = QGroupBox("Basic Information")
+        basic_layout = QVBoxLayout()
+        basic_layout.setSpacing(8)
+
+        # Display Name
+        display_layout = QVBoxLayout()
+        display_layout.setSpacing(3)
+        display_label = QLabel("Display Name:")
+        display_label.setStyleSheet("font-weight: bold;")
+        display_layout.addWidget(display_label)
+        self.display_name_edit = QLineEdit()
+        self.display_name_edit.setText(self.model_name)
+        self.display_name_edit.setPlaceholderText("User-friendly name for this model")
+        self.display_name_edit.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #1976D2;
+            }
+        """)
+        display_layout.addWidget(self.display_name_edit)
+        basic_layout.addLayout(display_layout)
+
+        # Description
+        desc_layout = QVBoxLayout()
+        desc_layout.setSpacing(3)
+        desc_label = QLabel("Description:")
+        desc_label.setStyleSheet("font-weight: bold;")
+        desc_layout.addWidget(desc_label)
+        self.description_edit = QTextEdit()
+        self.description_edit.setMaximumHeight(80)
+        self.description_edit.setPlaceholderText("Enter a description for this model...")
+        self.description_edit.setStyleSheet("""
+            QTextEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QTextEdit:focus {
+                border-color: #1976D2;
+            }
+        """)
+        desc_layout.addWidget(self.description_edit)
+        basic_layout.addLayout(desc_layout)
+
+        basic_group.setLayout(basic_layout)
+        form_layout.addWidget(basic_group)
+
+        # Categories Section
+        categories_group = QGroupBox("Categories")
+        categories_layout = QVBoxLayout()
+        categories_layout.setSpacing(8)
+
+        categories_desc = QLabel("Select categories that best describe this model:")
+        categories_desc.setStyleSheet("color: #666; font-size: 11px;")
+        categories_layout.addWidget(categories_desc)
+
+        self.category_list = QListWidget()
+        self.category_list.setMaximumHeight(120)
+        self.category_list.setSelectionMode(QListWidget.MultiSelection)
+        self.category_list.setStyleSheet("""
+            QListWidget {
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                padding: 5px;
+            }
+            QListWidget::item {
+                padding: 5px;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            QListWidget::item:selected {
+                background-color: #1976D2;
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: #f0f8ff;
+            }
+        """)
+
+        # Add category options
+        for category in ModelCategory:
+            item = QListWidgetItem(category.value.title())
+            item.setData(1, category.value)  # Store the enum value
+            self.category_list.addItem(item)
+
+        categories_layout.addWidget(self.category_list)
+        categories_group.setLayout(categories_layout)
+        form_layout.addWidget(categories_group)
+
+        # Additional Information Section
+        additional_group = QGroupBox("Additional Information")
+        additional_layout = QVBoxLayout()
+        additional_layout.setSpacing(8)
+
+        # Usage Notes
+        usage_layout = QVBoxLayout()
+        usage_layout.setSpacing(3)
+        usage_label = QLabel("Usage Notes:")
+        usage_label.setStyleSheet("font-weight: bold;")
+        usage_layout.addWidget(usage_label)
+        self.usage_edit = QTextEdit()
+        self.usage_edit.setMaximumHeight(60)
+        self.usage_edit.setPlaceholderText("Any special usage notes or tips...")
+        self.usage_edit.setStyleSheet("""
+            QTextEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QTextEdit:focus {
+                border-color: #1976D2;
+            }
+        """)
+        usage_layout.addWidget(self.usage_edit)
+        additional_layout.addLayout(usage_layout)
+
+        # Source URL and License in horizontal layout
+        urls_layout = QHBoxLayout()
+        urls_layout.setSpacing(15)
+
+        # Source URL
+        url_layout = QVBoxLayout()
+        url_layout.setSpacing(3)
+        source_label = QLabel("Source URL:")
+        source_label.setStyleSheet("font-weight: bold;")
+        url_layout.addWidget(source_label)
+        self.source_edit = QLineEdit()
+        self.source_edit.setPlaceholderText("https://...")
+        self.source_edit.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #1976D2;
+            }
+        """)
+        url_layout.addWidget(self.source_edit)
+        urls_layout.addLayout(url_layout)
+
+        # License Info
+        license_layout = QVBoxLayout()
+        license_layout.setSpacing(3)
+        license_label = QLabel("License:")
+        license_label.setStyleSheet("font-weight: bold;")
+        license_layout.addWidget(license_label)
+        self.license_edit = QLineEdit()
+        self.license_edit.setPlaceholderText("License type or attribution...")
+        self.license_edit.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #1976D2;
+            }
+        """)
+        license_layout.addWidget(self.license_edit)
+        urls_layout.addLayout(license_layout)
+
+        additional_layout.addLayout(urls_layout)
+        additional_group.setLayout(additional_layout)
+        form_layout.addWidget(additional_group)
+
+        form_widget.setLayout(form_layout)
+        content_layout.addWidget(form_widget)
+
+        content_widget.setLayout(content_layout)
+        scroll_area.setWidget(content_widget)
+        layout.addWidget(scroll_area)
+
+        # Buttons section
+        button_widget = QWidget()
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(10)
+
+        button_layout.addStretch()
+
+        # Cancel button
+        self.cancel_btn = QPushButton("❌ Cancel")
+        self.cancel_btn.clicked.connect(self.reject)
+        self.cancel_btn.setMinimumHeight(40)
+        self.cancel_btn.setMinimumWidth(100)
+        button_layout.addWidget(self.cancel_btn)
+
+        # Install button
+        self.install_btn = QPushButton("✅ Install Model")
+        self.install_btn.clicked.connect(self.accept)
+        self.install_btn.setMinimumHeight(40)
+        self.install_btn.setMinimumWidth(140)
+        self.install_btn.setDefault(True)
+        button_layout.addWidget(self.install_btn)
+
+        button_widget.setLayout(button_layout)
+        layout.addWidget(button_widget)
+
+        # Set layout
+        self.setLayout(layout)
+
+        # Modern stylesheet
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #ffffff;
+                border: 1px solid #e0e0e0;
+                border-radius: 12px;
+            }
+
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 10px;
+                background-color: #fafafa;
+            }
+
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+                color: #1976D2;
+                font-size: 13px;
+            }
+
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+
+            QPushButton:hover {
+                background-color: #d32f2f;
+                transform: translateY(-1px);
+            }
+
+            QPushButton:pressed {
+                background-color: #b71c1c;
+                transform: translateY(0px);
+            }
+
+            QPushButton#install_btn {
+                background-color: #4CAF50;
+            }
+
+            QPushButton#install_btn:hover {
+                background-color: #45a049;
+            }
+
+            QPushButton#install_btn:pressed {
+                background-color: #388E3C;
+            }
+        """)
+
+        # Set object name for install button styling
+        self.install_btn.setObjectName("install_btn")
+
+    def accept(self):
+        """Handle accept button click."""
+        self.accepted = True
+        super().accept()
+
+    def reject(self):
+        """Handle reject button click."""
+        self.accepted = False
+        super().reject()
+
+    def _setup_metadata_widgets(self):
+        """Set up widgets for collecting model metadata."""
+        # Create a widget to hold our custom controls
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Display Name
+        display_name_label = QLabel("Display Name:")
+        layout.addWidget(display_name_label)
+        self.display_name_edit = QLineEdit()
+        self.display_name_edit.setText(self.model_name)  # Pre-fill with filename
+        self.display_name_edit.setPlaceholderText("User-friendly name for this model")
+        layout.addWidget(self.display_name_edit)
+
+        # Description
+        desc_label = QLabel("Description:")
+        layout.addWidget(desc_label)
+        self.description_edit = QTextEdit()
+        self.description_edit.setMaximumHeight(60)
+        self.description_edit.setPlaceholderText("Enter a description for this model...")
+        layout.addWidget(self.description_edit)
+
+        # Categories
+        cat_label = QLabel("Categories (select multiple):")
+        layout.addWidget(cat_label)
+        self.category_list = QListWidget()
+        self.category_list.setMaximumHeight(100)
+        self.category_list.setSelectionMode(QListWidget.MultiSelection)
+
+        # Add category options
+        for category in ModelCategory:
+            item = QListWidgetItem(category.value.title())
+            item.setData(1, category.value)  # Store the enum value
+            self.category_list.addItem(item)
+
+        layout.addWidget(self.category_list)
+
+        # Usage Notes
+        usage_label = QLabel("Usage Notes:")
+        layout.addWidget(usage_label)
+        self.usage_edit = QTextEdit()
+        self.usage_edit.setMaximumHeight(60)
+        self.usage_edit.setPlaceholderText("Any special usage notes or tips...")
+        layout.addWidget(self.usage_edit)
+
+        # Source URL
+        source_label = QLabel("Source URL:")
+        layout.addWidget(source_label)
+        self.source_edit = QLineEdit()
+        self.source_edit.setPlaceholderText("https://...")
+        layout.addWidget(self.source_edit)
+
+        # License Info
+        license_label = QLabel("License Information:")
+        layout.addWidget(license_label)
+        self.license_edit = QLineEdit()
+        self.license_edit.setPlaceholderText("License type or attribution...")
+        layout.addWidget(self.license_edit)
+
+        widget.setLayout(layout)
+        self.layout().addWidget(widget, 1, 0, 1, self.layout().columnCount())
+
+    def get_metadata(self) -> dict:
+        """Get the collected metadata."""
+        # Get selected categories
+        selected_categories = []
+        for i in range(self.category_list.count()):
+            item = self.category_list.item(i)
+            if item.isSelected():
+                selected_categories.append(item.data(1))  # Get the enum value
+
+        return {
+            'display_name': self.display_name_edit.text().strip(),
+            'description': self.description_edit.toPlainText().strip(),
+            'categories': selected_categories,
+            'usage_notes': self.usage_edit.toPlainText().strip(),
+            'source_url': self.source_edit.text().strip(),
+            'license_info': self.license_edit.text().strip()
+        }
+
+
+class ModelEditDialog(QMessageBox):
+    """Dialog for editing existing model metadata."""
+
+    def __init__(self, model: ModelInfo, parent=None):
+        super().__init__(parent)
+        self.model = model
+
+        self.setWindowTitle("Edit Model Parameters")
+        # Remove the default text to prevent overlapping - we'll use a custom layout
+        self.setText("")
+        self.setInformativeText("")
+
+        # Set minimum width for better layout
+        self.setMinimumWidth(800)
+
+        # Add custom widgets for metadata editing
+        self._setup_edit_widgets()
+
+        # Add standard buttons (Save first, then Cancel)
+        save_button = self.addButton("Save", QMessageBox.AcceptRole)
+        cancel_button = self.addButton("Cancel", QMessageBox.RejectRole)
+
+        # Set default button to Save
+        save_button.setDefault(True)
+        save_button.setFocus()
+
+        # Ensure proper button behavior
+        cancel_button.setAutoDefault(False)
+
+    def _setup_edit_widgets(self):
+        """Set up widgets for editing model metadata with a more compact, wider layout."""
+        # Create a widget to hold our custom controls
+        widget = QWidget()
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
+
+        # Title section
+        title_label = QLabel(f"Edit parameters for '{self.model.name}'")
+        title_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #1976D2; margin-bottom: 5px;")
+        main_layout.addWidget(title_label)
+
+        # Main content area - split into two columns
+        content_widget = QWidget()
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(20)
+
+        # Left column - Basic model information
+        left_column = QWidget()
+        left_layout = QVBoxLayout()
+        left_layout.setSpacing(8)
+
+        # Model Name (unique identifier)
+        name_label = QLabel("Model Name:")
+        name_label.setStyleSheet("font-weight: bold;")
+        left_layout.addWidget(name_label)
+        self.name_edit = QLineEdit()
+        self.name_edit.setText(str(self.model.name))
+        self.name_edit.setPlaceholderText("Unique name for this model")
+        left_layout.addWidget(self.name_edit)
+
+        # Display Name
+        display_name_label = QLabel("Display Name:")
+        left_layout.addWidget(display_name_label)
+        self.display_name_edit = QLineEdit()
+        self.display_name_edit.setText(str(self.model.display_name or ""))
+        self.display_name_edit.setPlaceholderText("User-friendly name")
+        left_layout.addWidget(self.display_name_edit)
+
+        # Model Type
+        model_type_label = QLabel("Model Type:")
+        left_layout.addWidget(model_type_label)
+        self.model_type_combo = QComboBox()
+        self.model_type_combo.addItem("Stable Diffusion v1.4", ModelType.STABLE_DIFFUSION_V1_4)
+        self.model_type_combo.addItem("Stable Diffusion v1.5", ModelType.STABLE_DIFFUSION_V1_5)
+        self.model_type_combo.addItem("Stable Diffusion XL", ModelType.STABLE_DIFFUSION_XL)
+
+        # Set current model type
+        if self.model.model_type:
+            if self.model.model_type == ModelType.STABLE_DIFFUSION_V1_4:
+                self.model_type_combo.setCurrentIndex(0)
+            elif self.model.model_type == ModelType.STABLE_DIFFUSION_V1_5:
+                self.model_type_combo.setCurrentIndex(1)
+            elif self.model.model_type == ModelType.STABLE_DIFFUSION_XL:
+                self.model_type_combo.setCurrentIndex(2)
+        else:
+            self.model_type_combo.setCurrentIndex(0)  # Default to v1.4
+
+        left_layout.addWidget(self.model_type_combo)
+
+        # Description
+        desc_label = QLabel("Description:")
+        left_layout.addWidget(desc_label)
+        self.description_edit = QTextEdit()
+        self.description_edit.setMaximumHeight(80)
+        self.description_edit.setPlainText(str(self.model.description or ""))
+        self.description_edit.setPlaceholderText("Model description...")
+        left_layout.addWidget(self.description_edit)
+
+        left_column.setLayout(left_layout)
+        content_layout.addWidget(left_column)
+
+        # Right column - Categories and URLs
+        right_column = QWidget()
+        right_layout = QVBoxLayout()
+        right_layout.setSpacing(8)
+
+        # Categories
+        cat_label = QLabel("Categories:")
+        right_layout.addWidget(cat_label)
+        self.category_list = QListWidget()
+        self.category_list.setMaximumHeight(120)
+        self.category_list.setSelectionMode(QListWidget.MultiSelection)
+
+        # Add category options and pre-select current categories
+        current_categories = set(self.model.categories) if self.model.categories else set()
+        for category in ModelCategory:
+            item = QListWidgetItem(category.value.title())
+            item.setData(1, category.value)  # Store the enum value
+            if category in current_categories:
+                item.setSelected(True)
+            self.category_list.addItem(item)
+
+        right_layout.addWidget(self.category_list)
+
+        # Usage Notes
+        usage_label = QLabel("Usage Notes:")
+        right_layout.addWidget(usage_label)
+        self.usage_edit = QTextEdit()
+        self.usage_edit.setMaximumHeight(60)
+        self.usage_edit.setPlainText(str(self.model.usage_notes or ""))
+        self.usage_edit.setPlaceholderText("Usage tips...")
+        right_layout.addWidget(self.usage_edit)
+
+        # Source URL and License in horizontal layout
+        urls_layout = QHBoxLayout()
+        urls_layout.setSpacing(10)
+
+        # Source URL
+        url_widget = QWidget()
+        url_layout = QVBoxLayout()
+        url_layout.setSpacing(2)
+        source_label = QLabel("Source URL:")
+        url_layout.addWidget(source_label)
+        self.source_edit = QLineEdit()
+        self.source_edit.setText(str(self.model.source_url or ""))
+        self.source_edit.setPlaceholderText("https://...")
+        url_layout.addWidget(self.source_edit)
+        url_widget.setLayout(url_layout)
+        urls_layout.addWidget(url_widget)
+
+        # License Info
+        license_widget = QWidget()
+        license_layout = QVBoxLayout()
+        license_layout.setSpacing(2)
+        license_label = QLabel("License:")
+        license_layout.addWidget(license_label)
+        self.license_edit = QLineEdit()
+        self.license_edit.setText(str(self.model.license_info or ""))
+        self.license_edit.setPlaceholderText("License info...")
+        license_layout.addWidget(self.license_edit)
+        license_widget.setLayout(license_layout)
+        urls_layout.addWidget(license_widget)
+
+        right_layout.addLayout(urls_layout)
+
+        right_column.setLayout(right_layout)
+        content_layout.addWidget(right_column)
+
+        content_widget.setLayout(content_layout)
+        main_layout.addWidget(content_widget)
+
+        # Bottom section - Parameters (side by side)
+        params_widget = QWidget()
+        params_layout = QHBoxLayout()
+        params_layout.setSpacing(15)
+
+        # Generation Parameters Section
+        gen_params_group = QGroupBox("Generation Defaults")
+        gen_params_layout = QVBoxLayout()
+        gen_params_layout.setSpacing(8)
+
+        # Default Steps and CFG in horizontal layout
+        gen_inputs_layout = QHBoxLayout()
+        gen_inputs_layout.setSpacing(15)
+
+        # Steps
+        steps_widget = QWidget()
+        steps_layout = QVBoxLayout()
+        steps_layout.setSpacing(2)
+        steps_label = QLabel("Steps:")
+        steps_layout.addWidget(steps_label)
+        self.default_steps_spin = QSpinBox()
+        self.default_steps_spin.setRange(1, 100)
+        self.default_steps_spin.setValue(int(self.model.default_steps))
+        self.default_steps_spin.setToolTip("Default inference steps")
+        steps_layout.addWidget(self.default_steps_spin)
+        steps_widget.setLayout(steps_layout)
+        gen_inputs_layout.addWidget(steps_widget)
+
+        # CFG Scale
+        cfg_widget = QWidget()
+        cfg_layout = QVBoxLayout()
+        cfg_layout.setSpacing(2)
+        cfg_label = QLabel("CFG Scale:")
+        cfg_layout.addWidget(cfg_label)
+        self.default_cfg_spin = QDoubleSpinBox()
+        self.default_cfg_spin.setRange(1.0, 20.0)
+        self.default_cfg_spin.setValue(float(self.model.default_cfg))
+        self.default_cfg_spin.setSingleStep(0.1)
+        self.default_cfg_spin.setToolTip("Default guidance scale")
+        cfg_layout.addWidget(self.default_cfg_spin)
+        cfg_widget.setLayout(cfg_layout)
+        gen_inputs_layout.addWidget(cfg_widget)
+
+        gen_params_layout.addLayout(gen_inputs_layout)
+
+        # Auto-set button
+        auto_set_gen_btn = QPushButton("Set Default")
+        auto_set_gen_btn.setMaximumWidth(100)
+        auto_set_gen_btn.clicked.connect(self._auto_set_generation_params)
+        auto_set_gen_btn.setToolTip("Set defaults based on model type")
+        gen_params_layout.addWidget(auto_set_gen_btn)
+
+        gen_params_group.setLayout(gen_params_layout)
+        params_layout.addWidget(gen_params_group)
+
+        # Aspect Ratios Section
+        aspect_group = QGroupBox("Aspect Ratios")
+        aspect_layout = QVBoxLayout()
+        aspect_layout.setSpacing(6)
+
+        # Aspect ratios in separate rows
+        ratios_layout = QVBoxLayout()
+        ratios_layout.setSpacing(8)
+
+        # 1:1 in first row
+        ratio_1_1_widget = QWidget()
+        ratio_1_1_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        ratio_1_1_layout = QVBoxLayout()
+        ratio_1_1_layout.setSpacing(2)
+        ratio_1_1_label = QLabel("1:1:")
+        ratio_1_1_layout.addWidget(ratio_1_1_label)
+        self.aspect_ratio_1_1_edit = QLineEdit()
+        self.aspect_ratio_1_1_edit.setText(str(self.model.aspect_ratio_1_1 or ""))
+        self.aspect_ratio_1_1_edit.setPlaceholderText("512x512")
+        self.aspect_ratio_1_1_edit.setMaximumWidth(200)
+        ratio_1_1_layout.addWidget(self.aspect_ratio_1_1_edit)
+        ratio_1_1_widget.setLayout(ratio_1_1_layout)
+        ratios_layout.addWidget(ratio_1_1_widget)
+
+        # 9:16 in second row
+        ratio_9_16_widget = QWidget()
+        ratio_9_16_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        ratio_9_16_layout = QVBoxLayout()
+        ratio_9_16_layout.setSpacing(2)
+        ratio_9_16_label = QLabel("9:16:")
+        ratio_9_16_layout.addWidget(ratio_9_16_label)
+        self.aspect_ratio_9_16_edit = QLineEdit()
+        self.aspect_ratio_9_16_edit.setText(str(self.model.aspect_ratio_9_16 or ""))
+        self.aspect_ratio_9_16_edit.setPlaceholderText("384x672")
+        self.aspect_ratio_9_16_edit.setMaximumWidth(200)
+        ratio_9_16_layout.addWidget(self.aspect_ratio_9_16_edit)
+        ratio_9_16_widget.setLayout(ratio_9_16_layout)
+        ratios_layout.addWidget(ratio_9_16_widget)
+
+        # 16:9 in third row
+        ratio_16_9_widget = QWidget()
+        ratio_16_9_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        ratio_16_9_layout = QVBoxLayout()
+        ratio_16_9_layout.setSpacing(2)
+        ratio_16_9_label = QLabel("16:9:")
+        ratio_16_9_layout.addWidget(ratio_16_9_label)
+        self.aspect_ratio_16_9_edit = QLineEdit()
+        self.aspect_ratio_16_9_edit.setText(str(self.model.aspect_ratio_16_9 or ""))
+        self.aspect_ratio_16_9_edit.setPlaceholderText("672x384")
+        self.aspect_ratio_16_9_edit.setMaximumWidth(200)
+        ratio_16_9_layout.addWidget(self.aspect_ratio_16_9_edit)
+        ratio_16_9_widget.setLayout(ratio_16_9_layout)
+        ratios_layout.addWidget(ratio_16_9_widget)
+
+        # Auto-set button
+        auto_set_btn = QPushButton("Set Default")
+        auto_set_btn.setMaximumWidth(100)
+        auto_set_btn.clicked.connect(self._auto_set_aspect_ratios)
+        auto_set_btn.setToolTip("Set defaults based on model type")
+        ratios_layout.addWidget(auto_set_btn)
+
+        aspect_layout.addLayout(ratios_layout)
+        aspect_group.setLayout(aspect_layout)
+        params_layout.addWidget(aspect_group)
+
+        params_widget.setLayout(params_layout)
+        main_layout.addWidget(params_widget)
+
+        widget.setLayout(main_layout)
+        self.layout().addWidget(widget, 1, 0, 1, self.layout().columnCount())
+
+    def get_metadata(self) -> dict:
+        """Get the edited metadata."""
+        # Get selected categories
+        selected_categories = []
+        for i in range(self.category_list.count()):
+            item = self.category_list.item(i)
+            if item.isSelected():
+                selected_categories.append(item.data(1))  # Get the enum value
+
+        # Get selected model type
+        current_index = self.model_type_combo.currentIndex()
+        model_type = self.model_type_combo.itemData(current_index)
+
+        return {
+            'name': self.name_edit.text().strip(),
+            'display_name': self.display_name_edit.text().strip(),
+            'model_type': model_type,
+            'description': self.description_edit.toPlainText().strip(),
+            'categories': selected_categories,
+            'usage_notes': self.usage_edit.toPlainText().strip(),
+            'source_url': self.source_edit.text().strip(),
+            'license_info': self.license_edit.text().strip(),
+            'default_steps': self.default_steps_spin.value(),
+            'default_cfg': self.default_cfg_spin.value(),
+            'aspect_ratio_1_1': self.aspect_ratio_1_1_edit.text().strip(),
+            'aspect_ratio_9_16': self.aspect_ratio_9_16_edit.text().strip(),
+            'aspect_ratio_16_9': self.aspect_ratio_16_9_edit.text().strip()
+        }
+
+    def _auto_set_generation_params(self):
+        """Auto-set generation parameters based on the selected model type."""
+        # Get selected model type
+        current_index = self.model_type_combo.currentIndex()
+        model_type = self.model_type_combo.itemData(current_index)
+
+        # Set default generation parameters based on model type
+        if model_type == ModelType.STABLE_DIFFUSION_XL:
+            # SDXL models often work better with different defaults
+            self.default_steps_spin.setValue(25)  # SDXL typically needs more steps
+            self.default_cfg_spin.setValue(7.0)   # Slightly lower CFG for SDXL
+        else:
+            # SD 1.4/1.5 defaults
+            self.default_steps_spin.setValue(20)
+            self.default_cfg_spin.setValue(7.5)
+
+    def _auto_set_aspect_ratios(self):
+        """Auto-set aspect ratios based on the selected model type."""
+        # Get selected model type
+        current_index = self.model_type_combo.currentIndex()
+        model_type = self.model_type_combo.itemData(current_index)
+
+        # Set default aspect ratios based on model type
+        if model_type == ModelType.STABLE_DIFFUSION_XL:
+            # SDXL base resolution is 1024x1024
+            self.aspect_ratio_1_1_edit.setText("1024x1024")
+            self.aspect_ratio_9_16_edit.setText("768x1344")  # portrait
+            self.aspect_ratio_16_9_edit.setText("1344x768")  # landscape
+        else:
+            # SD 1.4/1.5 base resolution is 512x512
+            self.aspect_ratio_1_1_edit.setText("512x512")
+            self.aspect_ratio_9_16_edit.setText("384x672")  # portrait
+            self.aspect_ratio_16_9_edit.setText("672x384")  # landscape
+
+
+class LoRAInstallDialog(QDialog):
+    """Dialog for collecting LoRA adapter metadata during installation."""
+
+    def __init__(self, lora_name: str, lora_path: str, parent=None):
+        super().__init__(parent)
+        self.lora_name = lora_name
+        self.lora_path = lora_path
+
+        self.setWindowTitle("Install LoRA Adapter")
+        self.setModal(True)
+        self.setFixedSize(700, 600)
+
+        # Center the dialog
+        if parent:
+            parent_rect = parent.geometry()
+            self.move(
+                parent_rect.x() + (parent_rect.width() - self.width()) // 2,
+                parent_rect.y() + (parent_rect.height() - self.height()) // 2
+            )
+
+        self.accepted = False  # Track if user accepted
+        self._init_ui()
+
+    def _init_ui(self):
+        """Initialize the dialog UI."""
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+
+        # Header section with icon and title
+        header_widget = QWidget()
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(15)
+
+        # Icon
+        icon_label = QLabel("🎭")
+        icon_font = QFont()
+        icon_font.setPointSize(32)
+        icon_label.setFont(icon_font)
+        header_layout.addWidget(icon_label)
+
+        # Title and subtitle
+        title_widget = QWidget()
+        title_layout = QVBoxLayout()
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(5)
+
+        title_label = QLabel("Install LoRA Adapter")
+        title_font = QFont()
+        title_font.setPointSize(18)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        title_label.setStyleSheet("color: #FF6B35;")
+        title_layout.addWidget(title_label)
+
+        lora_label = QLabel(f"🎭 {self.lora_name}")
+        lora_font = QFont()
+        lora_font.setPointSize(12)
+        lora_label.setFont(lora_font)
+        lora_label.setStyleSheet("color: #666;")
+        title_layout.addWidget(lora_label)
+
+        title_widget.setLayout(title_layout)
+        header_layout.addWidget(title_widget, stretch=1)
+
+        header_widget.setLayout(header_layout)
+        layout.addWidget(header_widget)
+
+        # Add separator
+        separator = QWidget()
+        separator.setFixedHeight(2)
+        separator.setStyleSheet("background-color: #e0e0e0; border-radius: 1px;")
+        layout.addWidget(separator)
+
+        # Scrollable content area
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setMinimumHeight(350)
+        scroll_area.setMaximumHeight(350)
+
+        content_widget = QWidget()
+        content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(15)
+
+        # File path info
+        path_group = QWidget()
+        path_layout = QVBoxLayout()
+        path_layout.setContentsMargins(0, 0, 0, 0)
+        path_layout.setSpacing(5)
+
+        path_label = QLabel("📂 Source Path:")
+        path_label.setStyleSheet("font-weight: bold; color: #333;")
+        path_layout.addWidget(path_label)
+
+        path_display = QLabel(self.lora_path)
+        path_display.setWordWrap(True)
+        path_display.setStyleSheet("""
+            background-color: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 8px;
+            color: #666;
+            font-family: 'Segoe UI', monospace;
+            font-size: 11px;
+        """)
+        path_layout.addWidget(path_display)
+
+        path_group.setLayout(path_layout)
+        content_layout.addWidget(path_group)
+
+        # Metadata form
+        form_widget = QWidget()
+        form_layout = QVBoxLayout()
+        form_layout.setContentsMargins(0, 0, 0, 0)
+        form_layout.setSpacing(12)
+
+        # Basic Information Section
+        basic_group = QGroupBox("Basic Information")
+        basic_layout = QVBoxLayout()
+        basic_layout.setSpacing(8)
+
+        # Display Name
+        display_layout = QVBoxLayout()
+        display_layout.setSpacing(3)
+        display_label = QLabel("Display Name:")
+        display_label.setStyleSheet("font-weight: bold;")
+        display_layout.addWidget(display_label)
+        self.display_name_edit = QLineEdit()
+        self.display_name_edit.setText(self.lora_name)
+        self.display_name_edit.setPlaceholderText("User-friendly name for this LoRA")
+        self.display_name_edit.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #FF6B35;
+            }
+        """)
+        display_layout.addWidget(self.display_name_edit)
+        basic_layout.addLayout(display_layout)
+
+        # Base Model Type
+        base_model_layout = QVBoxLayout()
+        base_model_layout.setSpacing(3)
+        base_model_label = QLabel("Base Model Type:")
+        base_model_label.setStyleSheet("font-weight: bold;")
+        base_model_layout.addWidget(base_model_label)
+        self.base_model_combo = QComboBox()
+        self.base_model_combo.addItem("Stable Diffusion v1.4", ModelType.STABLE_DIFFUSION_V1_4)
+        self.base_model_combo.addItem("Stable Diffusion v1.5", ModelType.STABLE_DIFFUSION_V1_5)
+        self.base_model_combo.addItem("Stable Diffusion XL", ModelType.STABLE_DIFFUSION_XL)
+        self.base_model_combo.setCurrentIndex(1)  # Default to v1.5
+        self.base_model_combo.setStyleSheet("""
+            QComboBox {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QComboBox:focus {
+                border-color: #FF6B35;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::down-arrow {
+                image: url(down_arrow.png);
+                width: 12px;
+                height: 12px;
+            }
+        """)
+        base_model_layout.addWidget(self.base_model_combo)
+        basic_layout.addLayout(base_model_layout)
+
+        # Description
+        desc_layout = QVBoxLayout()
+        desc_layout.setSpacing(3)
+        desc_label = QLabel("Description:")
+        desc_label.setStyleSheet("font-weight: bold;")
+        desc_layout.addWidget(desc_label)
+        self.description_edit = QTextEdit()
+        self.description_edit.setMaximumHeight(80)
+        self.description_edit.setPlaceholderText("Enter a description for this LoRA...")
+        self.description_edit.setStyleSheet("""
+            QTextEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QTextEdit:focus {
+                border-color: #FF6B35;
+            }
+        """)
+        desc_layout.addWidget(self.description_edit)
+        basic_layout.addLayout(desc_layout)
+
+        basic_group.setLayout(basic_layout)
+        form_layout.addWidget(basic_group)
+
+        # LoRA Specific Section
+        lora_group = QGroupBox("LoRA Configuration")
+        lora_layout = QVBoxLayout()
+        lora_layout.setSpacing(8)
+
+        # Trigger Words
+        trigger_layout = QVBoxLayout()
+        trigger_layout.setSpacing(3)
+        trigger_label = QLabel("Trigger Words:")
+        trigger_label.setStyleSheet("font-weight: bold;")
+        trigger_layout.addWidget(trigger_label)
+        self.trigger_words_edit = QLineEdit()
+        self.trigger_words_edit.setPlaceholderText("e.g., character name, style, quality terms")
+        self.trigger_words_edit.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #FF6B35;
+            }
+        """)
+        trigger_layout.addWidget(self.trigger_words_edit)
+        lora_layout.addLayout(trigger_layout)
+
+        # Default Scaling
+        scaling_layout = QVBoxLayout()
+        scaling_layout.setSpacing(3)
+        scaling_label = QLabel("Default Scaling:")
+        scaling_label.setStyleSheet("font-weight: bold;")
+        scaling_layout.addWidget(scaling_label)
+        self.scaling_spin = QDoubleSpinBox()
+        self.scaling_spin.setRange(0.0, 2.0)
+        self.scaling_spin.setValue(1.0)
+        self.scaling_spin.setSingleStep(0.1)
+        self.scaling_spin.setToolTip("Default scaling factor for this LoRA (0.0-2.0)")
+        self.scaling_spin.setStyleSheet("""
+            QDoubleSpinBox {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QDoubleSpinBox:focus {
+                border-color: #FF6B35;
+            }
+        """)
+        scaling_layout.addWidget(self.scaling_spin)
+        lora_layout.addLayout(scaling_layout)
+
+        lora_group.setLayout(lora_layout)
+        form_layout.addWidget(lora_group)
+
+        # Categories Section
+        categories_group = QGroupBox("Categories")
+        categories_layout = QVBoxLayout()
+        categories_layout.setSpacing(8)
+
+        categories_desc = QLabel("Select categories that best describe this LoRA:")
+        categories_desc.setStyleSheet("color: #666; font-size: 11px;")
+        categories_layout.addWidget(categories_desc)
+
+        self.category_list = QListWidget()
+        self.category_list.setMaximumHeight(120)
+        self.category_list.setSelectionMode(QListWidget.MultiSelection)
+        self.category_list.setStyleSheet("""
+            QListWidget {
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                padding: 5px;
+            }
+            QListWidget::item {
+                padding: 5px;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            QListWidget::item:selected {
+                background-color: #FF6B35;
+                color: white;
+            }
+            QListWidget::item:hover {
+                background-color: #fff0eb;
+            }
+        """)
+
+        # Add category options
+        for category in ModelCategory:
+            item = QListWidgetItem(category.value.title())
+            item.setData(1, category.value)  # Store the enum value
+            self.category_list.addItem(item)
+
+        categories_layout.addWidget(self.category_list)
+        categories_group.setLayout(categories_layout)
+        form_layout.addWidget(categories_group)
+
+        # Additional Information Section
+        additional_group = QGroupBox("Additional Information")
+        additional_layout = QVBoxLayout()
+        additional_layout.setSpacing(8)
+
+        # Usage Notes
+        usage_layout = QVBoxLayout()
+        usage_layout.setSpacing(3)
+        usage_label = QLabel("Usage Notes:")
+        usage_label.setStyleSheet("font-weight: bold;")
+        usage_layout.addWidget(usage_label)
+        self.usage_edit = QTextEdit()
+        self.usage_edit.setMaximumHeight(60)
+        self.usage_edit.setPlaceholderText("Any special usage notes or tips...")
+        self.usage_edit.setStyleSheet("""
+            QTextEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QTextEdit:focus {
+                border-color: #FF6B35;
+            }
+        """)
+        usage_layout.addWidget(self.usage_edit)
+        additional_layout.addLayout(usage_layout)
+
+        # Source URL and License in horizontal layout
+        urls_layout = QHBoxLayout()
+        urls_layout.setSpacing(15)
+
+        # Source URL
+        url_layout = QVBoxLayout()
+        url_layout.setSpacing(3)
+        source_label = QLabel("Source URL:")
+        source_label.setStyleSheet("font-weight: bold;")
+        url_layout.addWidget(source_label)
+        self.source_edit = QLineEdit()
+        self.source_edit.setPlaceholderText("https://...")
+        self.source_edit.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #FF6B35;
+            }
+        """)
+        url_layout.addWidget(self.source_edit)
+        urls_layout.addLayout(url_layout)
+
+        # License Info
+        license_layout = QVBoxLayout()
+        license_layout.setSpacing(3)
+        license_label = QLabel("License:")
+        license_label.setStyleSheet("font-weight: bold;")
+        license_layout.addWidget(license_label)
+        self.license_edit = QLineEdit()
+        self.license_edit.setPlaceholderText("License type or attribution...")
+        self.license_edit.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                background-color: #ffffff;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #FF6B35;
+            }
+        """)
+        license_layout.addWidget(self.license_edit)
+        urls_layout.addLayout(license_layout)
+
+        additional_layout.addLayout(urls_layout)
+        additional_group.setLayout(additional_layout)
+        form_layout.addWidget(additional_group)
+
+        form_widget.setLayout(form_layout)
+        content_layout.addWidget(form_widget)
+
+        content_widget.setLayout(content_layout)
+        scroll_area.setWidget(content_widget)
+        layout.addWidget(scroll_area)
+
+        # Buttons section
+        button_widget = QWidget()
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(10)
+
+        button_layout.addStretch()
+
+        # Cancel button
+        self.cancel_btn = QPushButton("❌ Cancel")
+        self.cancel_btn.clicked.connect(self.reject)
+        self.cancel_btn.setMinimumHeight(40)
+        self.cancel_btn.setMinimumWidth(100)
+        button_layout.addWidget(self.cancel_btn)
+
+        # Install button
+        self.install_btn = QPushButton("✅ Install LoRA")
+        self.install_btn.clicked.connect(self.accept)
+        self.install_btn.setMinimumHeight(40)
+        self.install_btn.setMinimumWidth(140)
+        self.install_btn.setDefault(True)
+        button_layout.addWidget(self.install_btn)
+
+        button_widget.setLayout(button_layout)
+        layout.addWidget(button_widget)
+
+        # Set layout
+        self.setLayout(layout)
+
+        # Modern stylesheet
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #ffffff;
+                border: 1px solid #e0e0e0;
+                border-radius: 12px;
+            }
+
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 10px;
+                background-color: #fafafa;
+            }
+
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+                color: #FF6B35;
+                font-size: 13px;
+            }
+
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+
+            QPushButton:hover {
+                background-color: #d32f2f;
+                transform: translateY(-1px);
+            }
+
+            QPushButton:pressed {
+                background-color: #b71c1c;
+                transform: translateY(0px);
+            }
+
+            QPushButton#install_btn {
+                background-color: #FF6B35;
+            }
+
+            QPushButton#install_btn:hover {
+                background-color: #FF8A65;
+            }
+
+            QPushButton#install_btn:pressed {
+                background-color: #E64A19;
+            }
+        """)
+
+        # Set object name for install button styling
+        self.install_btn.setObjectName("install_btn")
+
+    def accept(self):
+        """Handle accept button click."""
+        self.accepted = True
+        super().accept()
+
+    def reject(self):
+        """Handle reject button click."""
+        self.accepted = False
+        super().reject()
+
+    def _setup_metadata_widgets(self):
+        """Set up widgets for collecting LoRA metadata."""
+        # Create a widget to hold our custom controls
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Display Name
+        display_name_label = QLabel("Display Name:")
+        layout.addWidget(display_name_label)
+        self.display_name_edit = QLineEdit()
+        self.display_name_edit.setText(self.lora_name)  # Pre-fill with filename
+        self.display_name_edit.setPlaceholderText("User-friendly name for this LoRA")
+        layout.addWidget(self.display_name_edit)
+
+        # Base Model Type
+        base_model_label = QLabel("Base Model Type:")
+        layout.addWidget(base_model_label)
+        self.base_model_combo = QComboBox()
+        self.base_model_combo.addItem("Stable Diffusion v1.4", ModelType.STABLE_DIFFUSION_V1_4)
+        self.base_model_combo.addItem("Stable Diffusion v1.5", ModelType.STABLE_DIFFUSION_V1_5)
+        self.base_model_combo.addItem("Stable Diffusion XL", ModelType.STABLE_DIFFUSION_XL)
+        self.base_model_combo.setCurrentIndex(1)  # Default to v1.5
+        layout.addWidget(self.base_model_combo)
+
+        # Description
+        desc_label = QLabel("Description:")
+        layout.addWidget(desc_label)
+        self.description_edit = QTextEdit()
+        self.description_edit.setMaximumHeight(60)
+        self.description_edit.setPlaceholderText("Enter a description for this LoRA...")
+        layout.addWidget(self.description_edit)
+
+        # Trigger Words
+        trigger_label = QLabel("Trigger Words (comma-separated):")
+        layout.addWidget(trigger_label)
+        self.trigger_words_edit = QLineEdit()
+        self.trigger_words_edit.setPlaceholderText("e.g., character name, style, quality terms")
+        layout.addWidget(self.trigger_words_edit)
+
+        # Categories
+        cat_label = QLabel("Categories (select multiple):")
+        layout.addWidget(cat_label)
+        self.category_list = QListWidget()
+        self.category_list.setMaximumHeight(100)
+        self.category_list.setSelectionMode(QListWidget.MultiSelection)
+
+        # Add category options
+        for category in ModelCategory:
+            item = QListWidgetItem(category.value.title())
+            item.setData(1, category.value)  # Store the enum value
+            self.category_list.addItem(item)
+
+        layout.addWidget(self.category_list)
+
+        # Default Scaling
+        scaling_label = QLabel("Default Scaling:")
+        layout.addWidget(scaling_label)
+        self.scaling_spin = QDoubleSpinBox()
+        self.scaling_spin.setRange(0.0, 2.0)
+        self.scaling_spin.setValue(1.0)
+        self.scaling_spin.setSingleStep(0.1)
+        self.scaling_spin.setToolTip("Default scaling factor for this LoRA (0.0-2.0)")
+        layout.addWidget(self.scaling_spin)
+
+        # Usage Notes
+        usage_label = QLabel("Usage Notes:")
+        layout.addWidget(usage_label)
+        self.usage_edit = QTextEdit()
+        self.usage_edit.setMaximumHeight(60)
+        self.usage_edit.setPlaceholderText("Any special usage notes or tips...")
+        layout.addWidget(self.usage_edit)
+
+        # Source URL
+        source_label = QLabel("Source URL:")
+        layout.addWidget(source_label)
+        self.source_edit = QLineEdit()
+        self.source_edit.setPlaceholderText("https://...")
+        layout.addWidget(self.source_edit)
+
+        # License Info
+        license_label = QLabel("License Information:")
+        layout.addWidget(license_label)
+        self.license_edit = QLineEdit()
+        self.license_edit.setPlaceholderText("License type or attribution...")
+        layout.addWidget(self.license_edit)
+
+        widget.setLayout(layout)
+        self.layout().addWidget(widget, 1, 0, 1, self.layout().columnCount())
+
+    def get_metadata(self) -> dict:
+        """Get the collected metadata."""
+        # Get selected categories
+        selected_categories = []
+        for i in range(self.category_list.count()):
+            item = self.category_list.item(i)
+            if item.isSelected():
+                selected_categories.append(item.data(1))  # Get the enum value
+
+        # Get selected base model type
+        current_index = self.base_model_combo.currentIndex()
+        base_model_type = self.base_model_combo.itemData(current_index)
+
+        # Parse trigger words
+        trigger_words_text = self.trigger_words_edit.text().strip()
+        trigger_words = [word.strip() for word in trigger_words_text.split(',') if word.strip()]
+
+        return {
+            'display_name': self.display_name_edit.text().strip(),
+            'base_model_type': base_model_type,
+            'description': self.description_edit.toPlainText().strip(),
+            'trigger_words': trigger_words,
+            'categories': selected_categories,
+            'default_scaling': self.scaling_spin.value(),
+            'usage_notes': self.usage_edit.toPlainText().strip(),
+            'source_url': self.source_edit.text().strip(),
+            'license_info': self.license_edit.text().strip()
+        }
+
+
+class LoRAEditDialog(QMessageBox):
+    """Dialog for editing existing LoRA adapter metadata."""
+
+    def __init__(self, lora: LoRAInfo, parent=None):
+        super().__init__(parent)
+        self.lora = lora
+
+        self.setWindowTitle("Edit LoRA Parameters")
+        # Remove the default text to prevent overlapping - we'll use a custom layout
+        self.setText("")
+        self.setInformativeText("")
+
+        # Set minimum width for better layout
+        self.setMinimumWidth(700)
+
+        # Add custom widgets for LoRA metadata editing
+        self._setup_edit_widgets()
+
+        # Add standard buttons (Save first, then Cancel)
+        save_button = self.addButton("Save", QMessageBox.AcceptRole)
+        cancel_button = self.addButton("Cancel", QMessageBox.RejectRole)
+
+        # Set default button to Save
+        save_button.setDefault(True)
+        save_button.setFocus()
+
+        # Ensure proper button behavior
+        cancel_button.setAutoDefault(False)
+
+    def _setup_edit_widgets(self):
+        """Set up widgets for editing LoRA metadata."""
+        # Create a widget to hold our custom controls
+        widget = QWidget()
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
+
+        # Title section
+        title_label = QLabel(f"Edit parameters for LoRA '{self.lora.name}'")
+        title_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #E65100; margin-bottom: 5px;")
+        main_layout.addWidget(title_label)
+
+        # Main content area - split into two columns
+        content_widget = QWidget()
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(20)
+
+        # Left column - Basic LoRA information
+        left_column = QWidget()
+        left_layout = QVBoxLayout()
+        left_layout.setSpacing(8)
+
+        # LoRA Name (unique identifier)
+        name_label = QLabel("LoRA Name:")
+        name_label.setStyleSheet("font-weight: bold;")
+        left_layout.addWidget(name_label)
+        self.name_edit = QLineEdit()
+        self.name_edit.setText(str(self.lora.name))
+        self.name_edit.setPlaceholderText("Unique name for this LoRA")
+        left_layout.addWidget(self.name_edit)
+
+        # Display Name
+        display_name_label = QLabel("Display Name:")
+        left_layout.addWidget(display_name_label)
+        self.display_name_edit = QLineEdit()
+        self.display_name_edit.setText(str(self.lora.display_name or ""))
+        self.display_name_edit.setPlaceholderText("User-friendly name")
+        left_layout.addWidget(self.display_name_edit)
+
+        # Base Model Type
+        base_model_label = QLabel("Base Model Type:")
+        left_layout.addWidget(base_model_label)
+        self.base_model_combo = QComboBox()
+        self.base_model_combo.addItem("Stable Diffusion v1.4", ModelType.STABLE_DIFFUSION_V1_4)
+        self.base_model_combo.addItem("Stable Diffusion v1.5", ModelType.STABLE_DIFFUSION_V1_5)
+        self.base_model_combo.addItem("Stable Diffusion XL", ModelType.STABLE_DIFFUSION_XL)
+
+        # Set current base model type
+        if self.lora.base_model_type:
+            if self.lora.base_model_type == ModelType.STABLE_DIFFUSION_V1_4:
+                self.base_model_combo.setCurrentIndex(0)
+            elif self.lora.base_model_type == ModelType.STABLE_DIFFUSION_V1_5:
+                self.base_model_combo.setCurrentIndex(1)
+            elif self.lora.base_model_type == ModelType.STABLE_DIFFUSION_XL:
+                self.base_model_combo.setCurrentIndex(2)
+        else:
+            self.base_model_combo.setCurrentIndex(1)  # Default to v1.5
+
+        left_layout.addWidget(self.base_model_combo)
+
+        # Description
+        desc_label = QLabel("Description:")
+        left_layout.addWidget(desc_label)
+        self.description_edit = QTextEdit()
+        self.description_edit.setMaximumHeight(80)
+        self.description_edit.setPlainText(str(self.lora.description or ""))
+        self.description_edit.setPlaceholderText("LoRA description...")
+        left_layout.addWidget(self.description_edit)
+
+        left_column.setLayout(left_layout)
+        content_layout.addWidget(left_column)
+
+        # Right column - Categories and additional info
+        right_column = QWidget()
+        right_layout = QVBoxLayout()
+        right_layout.setSpacing(8)
+
+        # Categories
+        cat_label = QLabel("Categories:")
+        right_layout.addWidget(cat_label)
+        self.category_list = QListWidget()
+        self.category_list.setMaximumHeight(100)
+        self.category_list.setSelectionMode(QListWidget.MultiSelection)
+
+        # Add category options and pre-select current categories
+        current_categories = set(self.lora.categories) if self.lora.categories else set()
+        for category in ModelCategory:
+            item = QListWidgetItem(category.value.title())
+            item.setData(1, category.value)  # Store the enum value
+            if category in current_categories:
+                item.setSelected(True)
+            self.category_list.addItem(item)
+
+        right_layout.addWidget(self.category_list)
+
+        # Trigger Words
+        trigger_label = QLabel("Trigger Words:")
+        right_layout.addWidget(trigger_label)
+        self.trigger_words_edit = QLineEdit()
+        self.trigger_words_edit.setText(", ".join(self.lora.trigger_words) if self.lora.trigger_words else "")
+        self.trigger_words_edit.setPlaceholderText("e.g., character name, style, quality terms")
+        right_layout.addWidget(self.trigger_words_edit)
+
+        # Default Scaling
+        scaling_label = QLabel("Default Scaling:")
+        right_layout.addWidget(scaling_label)
+        self.scaling_spin = QDoubleSpinBox()
+        self.scaling_spin.setRange(0.0, 2.0)
+        self.scaling_spin.setValue(float(self.lora.default_scaling))
+        self.scaling_spin.setSingleStep(0.1)
+        self.scaling_spin.setToolTip("Default scaling factor for this LoRA (0.0-2.0)")
+        right_layout.addWidget(self.scaling_spin)
+
+        # Usage Notes
+        usage_label = QLabel("Usage Notes:")
+        right_layout.addWidget(usage_label)
+        self.usage_edit = QTextEdit()
+        self.usage_edit.setMaximumHeight(60)
+        self.usage_edit.setPlainText(str(self.lora.usage_notes or ""))
+        self.usage_edit.setPlaceholderText("Usage tips...")
+        right_layout.addWidget(self.usage_edit)
+
+        # Source URL and License in horizontal layout
+        urls_layout = QHBoxLayout()
+        urls_layout.setSpacing(10)
+
+        # Source URL
+        url_widget = QWidget()
+        url_layout = QVBoxLayout()
+        url_layout.setSpacing(2)
+        source_label = QLabel("Source URL:")
+        url_layout.addWidget(source_label)
+        self.source_edit = QLineEdit()
+        self.source_edit.setText(str(self.lora.source_url or ""))
+        self.source_edit.setPlaceholderText("https://...")
+        url_layout.addWidget(self.source_edit)
+        url_widget.setLayout(url_layout)
+        urls_layout.addWidget(url_widget)
+
+        # License Info
+        license_widget = QWidget()
+        license_layout = QVBoxLayout()
+        license_layout.setSpacing(2)
+        license_label = QLabel("License:")
+        license_layout.addWidget(license_label)
+        self.license_edit = QLineEdit()
+        self.license_edit.setText(str(self.lora.license_info or ""))
+        self.license_edit.setPlaceholderText("License info...")
+        license_layout.addWidget(self.license_edit)
+        license_widget.setLayout(license_layout)
+        urls_layout.addWidget(license_widget)
+
+        right_layout.addLayout(urls_layout)
+
+        right_column.setLayout(right_layout)
+        content_layout.addWidget(right_column)
+
+        content_widget.setLayout(content_layout)
+        main_layout.addWidget(content_widget)
+
+        widget.setLayout(main_layout)
+        self.layout().addWidget(widget, 1, 0, 1, self.layout().columnCount())
+
+    def get_metadata(self) -> dict:
+        """Get the edited LoRA metadata."""
+        # Get selected categories
+        selected_categories = []
+        for i in range(self.category_list.count()):
+            item = self.category_list.item(i)
+            if item.isSelected():
+                selected_categories.append(item.data(1))  # Get the enum value
+
+        # Get selected base model type
+        current_index = self.base_model_combo.currentIndex()
+        base_model_type = self.base_model_combo.itemData(current_index)
+
+        # Parse trigger words
+        trigger_words_text = self.trigger_words_edit.text().strip()
+        trigger_words = [word.strip() for word in trigger_words_text.split(',') if word.strip()]
+
+        return {
+            'name': self.name_edit.text().strip(),
+            'display_name': self.display_name_edit.text().strip(),
+            'base_model_type': base_model_type,
+            'description': self.description_edit.toPlainText().strip(),
+            'trigger_words': trigger_words,
+            'categories': selected_categories,
+            'default_scaling': self.scaling_spin.value(),
+            'usage_notes': self.usage_edit.toPlainText().strip(),
+            'source_url': self.source_edit.text().strip(),
+            'license_info': self.license_edit.text().strip()
+        }

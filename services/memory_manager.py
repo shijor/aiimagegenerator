@@ -12,11 +12,10 @@ class MemoryManager(QObject):
 
     model_auto_unloaded = pyqtSignal(str)  # Emitted when model is auto-unloaded (model_name)
 
-    INACTIVITY_TIMEOUT = 10 * 60 * 1000  # 10 minutes in milliseconds
-
-    def __init__(self, image_service):
+    def __init__(self, image_service, settings_manager):
         super().__init__()
         self.image_service = image_service
+        self.settings_manager = settings_manager
         self.inactivity_timer = QTimer(self)
         self.inactivity_timer.timeout.connect(self._on_inactivity_timeout)
         self.inactivity_timer.setSingleShot(True)
@@ -55,9 +54,10 @@ class MemoryManager(QObject):
         """Reset the inactivity timer when user activity is detected."""
         self.last_activity_time = time.time()
 
-        # Only start timer if we have a model loaded
-        if self.image_service.model and not self.inactivity_timer.isActive():
-            self.inactivity_timer.start(self.INACTIVITY_TIMEOUT)
+        settings = self.settings_manager.load_settings()
+        if settings.model_timeout_enabled and self.image_service.model and not self.inactivity_timer.isActive():
+            timeout_ms = settings.model_timeout_minutes * 60 * 1000
+            self.inactivity_timer.start(timeout_ms)
 
     def start_monitoring(self):
         """Start monitoring for inactivity."""

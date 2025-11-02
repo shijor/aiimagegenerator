@@ -78,6 +78,28 @@ The app supports both Hugging Face models and local model files:
 - **Local Files**: Place `.safetensors` or `.ckpt` files in the `models/` directory
 - **SDXL Models**: Automatically detected and optimized
 
+### 4. Text Enhancement with GGUF Models (Optional)
+The app supports text prompt enhancement using local language models, including GGUF quantized models:
+
+**Install GGUF Support:**
+```bash
+# For CPU-only (recommended for most users)
+pip install llama-cpp-python --only-binary llama-cpp-python
+
+# For GPU acceleration (if you have CUDA-compatible GPU)
+pip install llama-cpp-python
+```
+
+**Using GGUF Models:**
+1. Download a GGUF model (e.g., from Hugging Face)
+2. Go to Settings → Text Enhancement
+3. Browse and select your `.gguf` model file
+4. The app will automatically detect and use GGUF models for text enhancement
+
+**Supported Model Types:**
+- **Transformers models**: GPT-2, Llama, etc. (Hugging Face format)
+- **GGUF models**: Quantized models for better performance and lower memory usage
+
 ## 🎨 Usage
 
 ### Basic Generation
@@ -159,6 +181,22 @@ setup_venv.bat
 
 # Then run the app
 run.bat
+```
+
+### GGUF Model Support Issues
+```
+llama-cpp-python not available. GGUF model support will be disabled.
+```
+**Solution:**
+```bash
+# Install for CPU-only usage (recommended)
+pip install llama-cpp-python --only-binary llama-cpp-python
+
+# For GPU acceleration (requires CUDA)
+pip install llama-cpp-python
+
+# If installation fails, GGUF support is optional
+# The app works perfectly with transformers models
 ```
 
 ### Generation Errors

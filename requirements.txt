@@ -14,4 +14,15 @@ tokenizers==0.21.0
 sentencepiece==0.2.0
 protobuf==5.29.2
 huggingface-hub==0.28.1
-peft==0.14.0
+peft>=0.17.0
+openai>=1.0.0
+llama-cpp-python>=0.2.0
+# Note: llama-cpp-python can be difficult to install on Windows
+#
+# Alternative installation options if the above fails:
+# 1. CPU-only (easiest): pip install llama-cpp-python --only-binary llama-cpp-python
+# 2. Full install (requires C++ compiler): pip install llama-cpp-python
+# 3. Conda install: conda install -c conda-forge llama-cpp-python
+# 4. Pre-built wheels: Download from https://github.com/abetlen/llama-cpp-python/releases
+#
+# If installation fails, the app will still work with transformers-compatible models

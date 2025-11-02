@@ -15,6 +15,7 @@ class VerticalToolbar(QWidget):
         self.setFixedWidth(50)
         self.current_mode = 0
         self._init_ui()
+        self._setup_styling()
         self._change_mode(0)  # Set initial active state for image generator
 
     def _init_ui(self):
@@ -24,7 +25,7 @@ class VerticalToolbar(QWidget):
         layout.setSpacing(8)
 
         # Image Generation Button
-        self.image_gen_btn = QPushButton('')
+        self.image_gen_btn = QPushButton('🎨')
         self.image_gen_btn.setToolTip("Image Generation")
         self.image_gen_btn.clicked.connect(lambda: self._change_mode(0))
         self.image_gen_btn.setFixedSize(40, 40)
@@ -32,7 +33,7 @@ class VerticalToolbar(QWidget):
         layout.addWidget(self.image_gen_btn)
 
         # Model Management Button
-        self.model_btn = QPushButton('')
+        self.model_btn = QPushButton('🤖')
         self.model_btn.setToolTip("Model Management")
         self.model_btn.clicked.connect(lambda: self._change_mode(1))
         self.model_btn.setFixedSize(40, 40)
@@ -40,7 +41,7 @@ class VerticalToolbar(QWidget):
         layout.addWidget(self.model_btn)
 
         # Settings Button
-        self.settings_btn = QPushButton('')
+        self.settings_btn = QPushButton('⚙️')
         self.settings_btn.setToolTip("Settings")
         self.settings_btn.clicked.connect(lambda: self._change_mode(2))
         self.settings_btn.setFixedSize(40, 40)
@@ -49,6 +50,41 @@ class VerticalToolbar(QWidget):
 
         layout.addStretch()
         self.setLayout(layout)
+
+    def _setup_styling(self):
+        """Set up theme-independent styling for toolbar buttons."""
+        # Apply stylesheet to ensure emoji icons are always visible regardless of theme
+        self.setStyleSheet("""
+            /* Base button styling - high contrast for visibility */
+            QPushButton#gen_icon, QPushButton#model_icon, QPushButton#settings_icon {
+                background-color: transparent;
+                border: none;
+                border-radius: 6px;
+                font-size: 20px;
+                color: #000000;  /* Black text for maximum visibility */
+                padding: 0px;
+                margin: 0px;
+                text-align: center;
+            }
+
+            /* Active button styling */
+            QPushButton#gen_icon.active_icon, QPushButton#model_icon.active_icon, QPushButton#settings_icon.active_icon {
+                background-color: #1976D2;
+                color: #ffffff;  /* White text on blue background */
+            }
+
+            /* Hover effects for inactive buttons */
+            QPushButton#gen_icon:hover, QPushButton#model_icon:hover, QPushButton#settings_icon:hover {
+                background-color: #f0f0f0;
+                color: #000000;
+            }
+
+            /* Active button hover (override) */
+            QPushButton#gen_icon.active_icon:hover, QPushButton#model_icon.active_icon:hover, QPushButton#settings_icon.active_icon:hover {
+                background-color: #1565C0;
+                color: #ffffff;
+            }
+        """)
 
     def _change_mode(self, mode: int):
         """Change the active mode and update button styling."""
