@@ -2,7 +2,7 @@
 
 A high-performance Python desktop application for local AI image generation using Stable Diffusion models, optimized for systems with limited VRAM (6GB+).
 
-![Alt text](path/to/image.png)
+![Alt text](https://i.imgur.com/gL02uLZ.jpeg))
 
 
 ## 🚀 Performance Optimizations
